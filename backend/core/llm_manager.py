@@ -1,0 +1,572 @@
+"""
+LLM管理器 - 统一管理多个模型提供商
+"""
+import json
+import logging
+import os
+from typing import Dict, Any, Optional, List
+from pathlib import Path
+
+from .llm_providers import (
+    LLMProvider, LLMProviderFactory, ProviderType, 
+    ModelInfo, LLMResponse
+)
+from ..services.config_sync_service import config_sync_service
+
+logger = logging.getLogger(__name__)
+
+class LLMManager:
+    """LLM管理器"""
+    
+    def __init__(self, settings_file: Optional[Path] = None):
+        # 在初始化前先同步配置
+        self._sync_config_if_needed()
+        
+        self.settings_file = settings_file or self._get_default_settings_file()
+        self.current_provider: Optional[LLMProvider] = None
+        self._settings_mtime: Optional[float] = None
+        self.settings = self._load_settings()
+        self._initialize_provider()
+
+    def _current_settings_mtime(self):
+        from backend.services.ai_model_settings import path as ai_path
+        def stamp(path):
+            try:
+                return path.stat().st_mtime_ns
+            except OSError:
+                return None
+        return (stamp(self.settings_file), stamp(ai_path()))
+
+    def _reload_if_settings_changed(self) -> None:
+        """设置页保存后 settings.json 会变；API 进程与 Celery worker 都要在下一次调用时拿到新配置，
+        而不是等重启。"""
+        mtime = self._current_settings_mtime()
+        if mtime != self._settings_mtime:
+            logger.info("检测到 settings.json 变化，重新加载 LLM 配置")
+            self.settings = self._load_settings()
+            self._initialize_provider()
+    
+    def _get_default_settings_file(self) -> Path:
+        """获取默认设置文件路径"""
+        # 优先使用桌面模式应用目录（与前端保存一致）
+        app_dir = os.getenv("TIKCLIP_APP_DIR")
+        if app_dir:
+            return Path(app_dir) / "settings.json"
+
+        if os.environ.get("APPDATA"):
+            win_settings = Path(os.environ["APPDATA"]) / "TikClip" / "settings.json"
+            if win_settings.exists():
+                return win_settings
+
+        # 与设置 API 写入的位置保持同一来源（path_utils.get_data_directory），
+        # 否则设置页保存到 A、这里读 B，切换 provider 永远不生效
+        try:
+            from .path_utils import get_data_directory
+            return get_data_directory() / "settings.json"
+        except Exception as e:  # noqa: BLE001
+            logger.warning(f"无法通过 path_utils 定位 settings.json，回退到旧逻辑: {e}")
+        
+        # 优先使用默认的用户目录（macOS）- 客户端配置位置
+        default_app_dir = Path.home() / "Library" / "Application Support" / "TikClip"
+        default_settings = default_app_dir / "settings.json"
+        if default_settings.exists():
+            return default_settings
+            
+        # 最后检查项目data目录下的settings.json（开发环境）
+        project_data_dir = Path(__file__).parent.parent.parent / "data"
+        project_settings = project_data_dir / "settings.json"
+        if project_settings.exists():
+            return project_settings
+            
+        # 如果都不存在，返回默认路径
+        return default_settings
+    
+    def _sync_config_if_needed(self):
+        """检查并同步配置"""
+        try:
+            if config_sync_service.is_sync_needed():
+                logger.info("检测到客户端配置更新，开始同步...")
+                if config_sync_service.sync_from_client():
+                    logger.info("配置同步完成")
+                else:
+                    logger.warning("配置同步失败")
+        except Exception as e:
+            logger.error(f"配置同步检查失败: {e}")
+    
+    def _load_settings(self) -> Dict[str, Any]:
+        """加载设置"""
+        default_settings = {
+            "llm_provider": "dashscope",
+            "dashscope_api_key": "",
+            "openai_api_key": "",
+            # OpenAI 兼容接口地址；空 = 官方。环境变量 OPENAI_BASE_URL 作为兜底
+            "openai_base_url": os.getenv("OPENAI_BASE_URL", ""),
+            # 通义千问国际站（dashscope-intl）；空 = 中国站。Docker 用 DASHSCOPE_BASE_URL
+            "dashscope_base_url": os.getenv("DASHSCOPE_BASE_URL", ""),
+            "gemini_api_key": "",
+            "siliconflow_api_key": "",
+            "deepseek_api_key": "",
+            "kimi_api_key": "",
+            "glm_api_key": "",
+            "grok_api_key": "",
+            "infistar_api_key": "",
+            "api88_api_key": "",
+            "seed_api_key": "",
+            "model_name": "qwen-plus",
+            "chunk_size": 5000,
+            "min_score_threshold": 0.7,
+            "max_clips_per_collection": 5
+        }
+        
+        self._settings_mtime = self._current_settings_mtime()
+        if self.settings_file.exists():
+            try:
+                with open(self.settings_file, 'r', encoding='utf-8') as f:
+                    saved_settings = json.load(f)
+                    
+                    # 处理新的配置格式（客户端配置）
+                    if "api" in saved_settings and "api_keys" in saved_settings["api"]:
+                        api = saved_settings["api"]
+                        api_keys = api["api_keys"]
+                        default_settings.update({
+                            "dashscope_api_key": api_keys.get("dashscope", ""),
+                            "openai_api_key": api_keys.get("openai", ""),
+                            "gemini_api_key": api_keys.get("gemini", ""),
+                            "siliconflow_api_key": api_keys.get("siliconflow", ""),
+                            "deepseek_api_key": api_keys.get("deepseek", ""),
+                            "kimi_api_key": api_keys.get("kimi", ""),
+                            "glm_api_key": api_keys.get("glm", ""),
+                            "grok_api_key": api_keys.get("grok", ""),
+                            "infistar_api_key": api_keys.get("infistar", ""),
+                            "api88_api_key": api_keys.get("api88", ""),
+                            "seed_api_key": api_keys.get("seed", ""),
+                            "model_name": api.get("api_model", "qwen-plus")
+                        })
+                        # 设置页保存的提供商；旧版 settings.json 没有这个字段，保持 dashscope
+                        if api.get("api_provider"):
+                            default_settings["llm_provider"] = api["api_provider"]
+                        if api.get("api_base_url"):
+                            # 同一个字段：openai 系是兼容接口地址，dashscope 是国际站地址（#45）
+                            if default_settings["llm_provider"] == "dashscope":
+                                default_settings["dashscope_base_url"] = api["api_base_url"]
+                            else:
+                                default_settings["openai_base_url"] = api["api_base_url"]
+                        # 设置页「切片参数」：以前只在 API 进程内存里改一下，流水线（worker / 本地线程）从没读过
+                        processing = saved_settings.get("processing") or {}
+                        for src, dst in (("processing_min_score", "min_score_threshold"),
+                                         ("processing_chunk_size", "chunk_size"),
+                                         ("processing_max_clips", "max_clips_per_collection")):
+                            if processing.get(src) is not None:
+                                default_settings[dst] = processing[src]
+                    else:
+                        # 处理旧的配置格式（直接平铺）
+                        default_settings.update(saved_settings)
+                        
+            except Exception as e:
+                logger.warning(f"加载设置文件失败: {e}")
+        
+        self._apply_env_fallbacks(default_settings)
+        self._apply_local_preset(default_settings)
+        self._apply_cloud_preset(default_settings)
+        from backend.services import ai_model_settings as ai
+        configured = ai.load()
+        if configured and configured.analysis:
+            binding = configured.analysis
+            connection = ai.connection_for(configured, binding)
+            endpoint = ai.chat_endpoint(connection, binding.model)
+            default_settings.update(llm_provider='openai', cloud_preset=None, llm_provider_preset=None,
+                                    openai_api_key=endpoint['api_key'], openai_base_url=endpoint['base_url'],
+                                    model_name=binding.model, connection_provider=connection.provider,
+                                    connection_name=connection.name, chunk_size=configured.chunk_size,
+                                    min_score_threshold=configured.min_score_threshold,
+                                    max_clips_per_collection=configured.max_clips_per_collection)
+        return default_settings
+
+    def _apply_local_preset(self, settings: Dict[str, Any]) -> None:
+        """`ollama` / `lmstudio` 这类本地预设 → openai + 默认 base_url（见 core/local_presets.py）"""
+        from backend.core.local_presets import resolve_provider, LOCAL_PRESETS
+        provider, base_url, preset = resolve_provider(settings.get("llm_provider"), settings.get("openai_base_url"))
+        settings["llm_provider"] = provider
+        settings["llm_provider_preset"] = preset
+        if preset:
+            settings["openai_base_url"] = base_url
+            if not settings.get("model_name") or settings.get("model_name") == "qwen-plus":
+                # 预设有默认模型时替换掉 dashscope 的默认值，避免拿 qwen-plus 去问 Ollama
+                default_model = LOCAL_PRESETS[preset].default_model
+                if default_model:
+                    settings["model_name"] = default_model
+
+    def _apply_cloud_preset(self, settings: Dict[str, Any]) -> None:
+        """deepseek / seed / kimi / glm / grok / infistar → openai + 官方地址，用各家自己的 key。"""
+        from backend.core.cloud_presets import resolve_cloud_preset
+        from backend.core.model_catalog import curated_models, default_model_for
+
+        resolved = resolve_cloud_preset(settings.get("llm_provider"), settings.get("openai_base_url"))
+        settings["cloud_preset"] = None
+        if not resolved:
+            return
+        _provider, base_url, preset = resolved
+        settings["llm_provider"] = "openai"
+        settings["cloud_preset"] = preset.key
+        settings["openai_base_url"] = base_url
+        current = (settings.get("model_name") or "").strip()
+        own = curated_models(preset.key)
+        if not own:
+            # 多模型网关（infistar）：gpt / deepseek / gemini 都是合法型号，用户选什么就用什么
+            if not current and preset.default_model:
+                settings["model_name"] = preset.default_model
+            return
+        known = set(curated_models())
+        if not current or current == "qwen-plus" or (current in known and current not in own):
+            settings["model_name"] = preset.default_model or default_model_for(preset.key)
+
+    # Docker / 本地脚本模式没有设置页可用，只能靠环境变量（env.example 里也是这么写的），
+    # 但此前这里只读 settings.json，导致 API_DASHSCOPE_API_KEY 等变量形同虚设。
+    _ENV_KEY_FALLBACKS = {
+        "dashscope_api_key": ("API_DASHSCOPE_API_KEY", "DASHSCOPE_API_KEY"),
+        "openai_api_key": ("API_OPENAI_API_KEY", "OPENAI_API_KEY"),
+        "gemini_api_key": ("API_GEMINI_API_KEY", "GEMINI_API_KEY"),
+        "siliconflow_api_key": ("API_SILICONFLOW_API_KEY", "SILICONFLOW_API_KEY"),
+        "deepseek_api_key": ("API_DEEPSEEK_API_KEY", "DEEPSEEK_API_KEY"),
+        "kimi_api_key": ("API_KIMI_API_KEY", "MOONSHOT_API_KEY", "KIMI_API_KEY"),
+        "glm_api_key": ("API_GLM_API_KEY", "ZHIPU_API_KEY", "GLM_API_KEY"),
+        "grok_api_key": ("API_GROK_API_KEY", "XAI_API_KEY", "GROK_API_KEY"),
+        "infistar_api_key": ("API_INFISTAR_API_KEY", "INFISTAR_API_KEY"),
+        "api88_api_key": ("API_API88_API_KEY", "API88_API_KEY"),
+        "seed_api_key": ("API_SEED_API_KEY", "ARK_API_KEY", "VOLCENGINE_API_KEY", "DOUBAO_API_KEY"),
+    }
+
+    def _apply_env_fallbacks(self, settings: Dict[str, Any]) -> None:
+        for setting_name, env_names in self._ENV_KEY_FALLBACKS.items():
+            if settings.get(setting_name):
+                continue
+            for env_name in env_names:
+                value = os.getenv(env_name, "").strip()
+                if value:
+                    settings[setting_name] = value
+                    break
+
+        # 只有 settings.json 没有明确指定提供商/模型时，才让环境变量决定
+        file_has_provider = self._file_specifies("api_provider", "llm_provider")
+        env_provider = os.getenv("LLM_PROVIDER", "").strip().lower()
+        if env_provider and not file_has_provider:
+            settings["llm_provider"] = env_provider
+        env_model = os.getenv("API_MODEL_NAME", "").strip() or os.getenv("LLM_MODEL", "").strip()
+        if env_model and not self._file_specifies("api_model", "model_name"):
+            settings["model_name"] = env_model
+
+    def _file_specifies(self, *field_names: str) -> bool:
+        """settings.json（客户端嵌套格式或旧平铺格式）里是否显式写了某个字段"""
+        try:
+            if not self.settings_file.exists():
+                return False
+            with open(self.settings_file, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+        except Exception:
+            return False
+        api = data.get("api", {}) if isinstance(data, dict) else {}
+        return any(bool(api.get(name)) or bool(data.get(name)) for name in field_names)
+    
+    def _save_settings(self):
+        """保存设置"""
+        self.settings_file.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            with open(self.settings_file, 'w', encoding='utf-8') as f:
+                json.dump(self.settings, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            logger.error(f"保存设置失败: {e}")
+            raise
+    
+    def _initialize_provider(self):
+        """初始化当前提供商"""
+        try:
+            provider_type = ProviderType(self.settings.get("llm_provider", "dashscope"))
+            model_name = self.settings.get("model_name", "qwen-plus")
+            
+            # 本地预设不需要 key，也不要把用户的 OpenAI key 发给本地服务；
+            # seed / kimi / glm / grok 用各家自己的 key，不要误用 openai_api_key
+            cloud_preset = self.settings.get("cloud_preset")
+            if self.settings.get("llm_provider_preset"):
+                api_key = ""
+            elif cloud_preset:
+                from backend.core.cloud_presets import CLOUD_PRESETS
+                api_key = self.settings.get(CLOUD_PRESETS[cloud_preset].api_key_setting, "")
+            else:
+                api_key = self._get_api_key_for_provider(provider_type)
+            provider_kwargs = self._get_provider_kwargs(provider_type)
+
+            # 自建 OpenAI 兼容服务（Ollama / vLLM 等）常常不需要 key，有 base_url 就够
+            if api_key or (provider_type == ProviderType.OPENAI and provider_kwargs.get("base_url")):
+                self.current_provider = LLMProviderFactory.create_provider(
+                    provider_type, api_key or "", model_name, **provider_kwargs
+                )
+                logger.info(f"已初始化{provider_type.value}提供商，模型: {model_name}"
+                            + (f", base_url: {provider_kwargs['base_url']}" if provider_kwargs.get("base_url") else ""))
+            else:
+                logger.warning(f"未找到{provider_type.value}的API密钥")
+                self.current_provider = None
+                
+        except Exception as e:
+            logger.error(f"初始化提供商失败: {e}")
+            self.current_provider = None
+
+    def _get_provider_kwargs(self, provider_type: ProviderType) -> Dict[str, Any]:
+        """提供商构造参数：OpenAI 兼容接口的 base_url；通义千问国际站也复用同一个字段（走兼容模式）"""
+        if provider_type == ProviderType.OPENAI:
+            base_url = (self.settings.get("openai_base_url") or "").strip()
+            if base_url:
+                return {"base_url": base_url}
+        if provider_type == ProviderType.DASHSCOPE:
+            base_url = (self.settings.get("dashscope_base_url") or "").strip()
+            if base_url:
+                return {"base_url": base_url, "mode": "compatible"}
+        return {}
+
+    def get_processing_setting(self, name: str, default: Any = None) -> Any:
+        """设置页「切片参数」（min_score_threshold / chunk_size / max_clips_per_collection），随 settings.json 热重载"""
+        self._reload_if_settings_changed()
+        value = self.settings.get(name)
+        return default if value is None else value
+
+    def openai_compatible_endpoint(self) -> Optional[Dict[str, str]]:
+        """当前文本模型对应的 OpenAI 兼容 Chat Completions 地址、key、模型。
+
+        视觉理解默认复用文本模型：大多数提供商（Infistar / OpenAI / Gemini / Seed / Kimi / 通义…）
+        同一个 key 就能发图片消息。能不能看图由「测试图片理解」验证，这里只负责给出地址。
+        """
+        from backend.core.llm_providers import (
+            DASHSCOPE_CN_COMPATIBLE_BASE_URL, OPENAI_OFFICIAL_BASE_URL, normalize_base_url,
+        )
+        self._reload_if_settings_changed()
+        s = self.settings
+        provider = s.get("llm_provider", "dashscope")
+        model = (s.get("model_name") or "").strip()
+        if provider == "openai":
+            cloud_preset = s.get("cloud_preset")
+            if s.get("llm_provider_preset"):
+                key = ""
+            elif cloud_preset:
+                from backend.core.cloud_presets import CLOUD_PRESETS
+                key = s.get(CLOUD_PRESETS[cloud_preset].api_key_setting, "")
+            else:
+                key = s.get("openai_api_key", "")
+            base = normalize_base_url(s.get("openai_base_url")) or OPENAI_OFFICIAL_BASE_URL
+        elif provider == "dashscope":
+            key = s.get("dashscope_api_key", "")
+            base = normalize_base_url(s.get("dashscope_base_url")) or DASHSCOPE_CN_COMPATIBLE_BASE_URL
+        elif provider == "gemini":
+            key = s.get("gemini_api_key", "")
+            base = "https://generativelanguage.googleapis.com/v1beta/openai"
+        elif provider == "siliconflow":
+            from backend.core.model_catalog import SILICONFLOW_BASE_URL
+            key = s.get("siliconflow_api_key", "")
+            base = SILICONFLOW_BASE_URL
+        else:
+            return None
+        if not model:
+            return None
+        return {"base_url": base, "api_key": key or "", "model": model}
+    
+    def _get_api_key_for_provider(self, provider_type: ProviderType) -> Optional[str]:
+        """获取指定提供商的API密钥"""
+        key_mapping = {
+            ProviderType.DASHSCOPE: "dashscope_api_key",
+            ProviderType.OPENAI: "openai_api_key",
+            ProviderType.GEMINI: "gemini_api_key",
+            ProviderType.SILICONFLOW: "siliconflow_api_key",
+        }
+        
+        key_name = key_mapping.get(provider_type)
+        if key_name:
+            return self.settings.get(key_name, "")
+        return None
+    
+    def update_settings(self, new_settings: Dict[str, Any]):
+        """更新设置"""
+        self.settings.update(new_settings)
+        self._save_settings()
+        self._initialize_provider()
+    
+    def set_provider(self, provider_type: ProviderType, api_key: str, model_name: str,
+                     base_url: Optional[str] = None):
+        """设置提供商"""
+        try:
+            # 更新设置
+            provider_settings = {
+                "llm_provider": provider_type.value,
+                "model_name": model_name
+            }
+            
+            # 更新对应提供商的API密钥
+            key_mapping = {
+                ProviderType.DASHSCOPE: "dashscope_api_key",
+                ProviderType.OPENAI: "openai_api_key",
+                ProviderType.GEMINI: "gemini_api_key",
+                ProviderType.SILICONFLOW: "siliconflow_api_key",
+            }
+            
+            key_name = key_mapping.get(provider_type)
+            if key_name:
+                provider_settings[key_name] = api_key
+            if provider_type == ProviderType.OPENAI and base_url is not None:
+                provider_settings["openai_base_url"] = base_url
+
+            # update_settings 会保存并重新初始化 current_provider
+            self.update_settings(provider_settings)
+            
+            logger.info(f"已切换到{provider_type.value}提供商，模型: {model_name}")
+            
+        except Exception as e:
+            logger.error(f"设置提供商失败: {e}")
+            raise
+    
+    def call(self, prompt: str, input_data: Any = None, **kwargs) -> str:
+        """调用LLM。设了 TIKCLIP_LLM_CACHE_DIR 时按 sha1(prompt+input) 录制 / 回放，给回归集用。"""
+        from backend.core.project_cancellation import checkpoint
+        checkpoint()  # 项目已删除：不再为它花钱（RC156 #12）
+        self._reload_if_settings_changed()
+        cache_path = _llm_cache_path(prompt, input_data)
+        if cache_path is not None and cache_path.exists():
+            logger.info(f"LLM 缓存命中: {cache_path.name}")
+            return cache_path.read_text(encoding="utf-8")
+        if not self.current_provider:
+            raise ValueError("未配置LLM提供商，请自备 API Key 并到「设置 → 模型」填写")
+        
+        try:
+            response = self.current_provider.call(prompt, input_data, **kwargs)
+            content = response.content
+            from backend.core import llm_usage
+            llm_usage.record(response.model or getattr(self.current_provider, 'model_name', None), response.usage,
+                             prompt_chars=len(self.current_provider._build_full_input(prompt, input_data)), completion_chars=len(content or ''))
+            if cache_path is not None:
+                cache_path.parent.mkdir(parents=True, exist_ok=True)
+                cache_path.write_text(content, encoding="utf-8")
+            return content
+        except Exception as e:
+            logger.error(f"LLM调用失败: {e}")
+            raise
+    
+    def call_with_retry(self, prompt: str, input_data: Any = None, max_retries: int = 3, **kwargs) -> str:
+        """带重试机制的LLM调用"""
+        for attempt in range(max_retries):
+            try:
+                return self.call(prompt, input_data, **kwargs)
+            except ValueError:  # 如果是API Key或参数错误，不重试
+                raise
+            except Exception as e:
+                if attempt == max_retries - 1:
+                    logger.error(f"LLM调用在{max_retries}次重试后彻底失败。")
+                    raise
+                logger.warning(f"第{attempt + 1}次调用失败，准备重试: {str(e)}")
+                import time
+                time.sleep(2 ** attempt)  # 指数退避
+        return ""
+    
+    def test_provider_connection(self, provider_type: ProviderType, api_key: str, model_name: str,
+                                 **provider_kwargs) -> bool:
+        """测试提供商连接"""
+        try:
+            provider = LLMProviderFactory.create_provider(provider_type, api_key, model_name, **provider_kwargs)
+            return provider.test_connection()
+        except Exception as e:
+            logger.error(f"测试{provider_type.value}连接失败: {e}")
+            return False
+    
+    def get_current_provider_info(self) -> Dict[str, Any]:
+        """获取当前提供商信息"""
+        self._reload_if_settings_changed()
+        provider_value = self.settings.get("llm_provider", "dashscope")
+        try:
+            provider_type = ProviderType(provider_value)
+        except ValueError:
+            return {"provider": provider_value, "model": None, "available": False}
+        model_name = self.settings.get("model_name", "qwen-plus")
+        preset = self.settings.get("llm_provider_preset")
+        cloud_preset = self.settings.get("cloud_preset")
+        info = {
+            # 设置页 / CLI 看到的是用户选的名字（ollama / kimi），底层仍是 openai 兼容
+            "provider": preset or cloud_preset or provider_type.value,
+            "backend_provider": provider_type.value,
+            "model": model_name,
+            "available": self.current_provider is not None,
+            "display_name": self._get_provider_display_name(provider_type),
+        }
+        if preset:
+            from backend.core.local_presets import preset_display_name
+            info["display_name"] = preset_display_name(preset) or info["display_name"]
+        if cloud_preset:
+            from backend.core.cloud_presets import cloud_preset_display_name
+            info["display_name"] = cloud_preset_display_name(cloud_preset) or info["display_name"]
+        base_url = self._get_provider_kwargs(provider_type).get("base_url")
+        if base_url:
+            info["base_url"] = base_url
+        if self.settings.get('connection_provider'):
+            info['provider'] = self.settings['connection_provider']
+            info['display_name'] = self.settings['connection_name']
+        return info
+    
+    def _get_provider_display_name(self, provider_type: ProviderType) -> str:
+        """获取提供商显示名称"""
+        display_names = {
+            ProviderType.DASHSCOPE: "阿里通义千问",
+            ProviderType.OPENAI: "OpenAI / 兼容接口",
+            ProviderType.GEMINI: "Google Gemini",
+            ProviderType.SILICONFLOW: "硅基流动"
+        }
+        return display_names.get(provider_type, provider_type.value)
+    
+    def get_all_available_models(self) -> Dict[str, List[Dict[str, Any]]]:
+        """获取所有可用模型"""
+        all_models = LLMProviderFactory.get_all_available_models()
+        result = {}
+        
+        for provider_type, models in all_models.items():
+            provider_name = provider_type.value
+            result[provider_name] = [
+                {
+                    "name": model.name,
+                    "display_name": model.display_name,
+                    "max_tokens": model.max_tokens,
+                    "description": model.description
+                }
+                for model in models
+            ]
+        
+        return result
+    
+    def parse_json_response(self, response: str) -> Any:
+        """解析JSON响应（保持与原LLMClient的兼容性）"""
+        if not self.current_provider:
+            raise ValueError("未配置LLM提供商")
+        
+        # 这里可以复用原LLMClient的JSON解析逻辑
+        # 为了保持兼容性，我们创建一个临时的LLMClient实例
+        from ..utils.llm_client import LLMClient
+        temp_client = LLMClient()
+        return temp_client.parse_json_response(response)
+
+def _llm_cache_path(prompt: str, input_data: Any) -> Optional[Path]:
+    """TIKCLIP_LLM_CACHE_DIR 设了才启用；CI / eval 回放用。"""
+    root = os.getenv("TIKCLIP_LLM_CACHE_DIR")
+    if not root:
+        return None
+    import hashlib
+    payload = json.dumps({"p": prompt, "i": input_data}, ensure_ascii=False, sort_keys=True, default=str)
+    return Path(root) / f"{hashlib.sha1(payload.encode('utf-8')).hexdigest()}.txt"
+
+
+# 全局LLM管理器实例
+_llm_manager: Optional[LLMManager] = None
+
+def get_llm_manager() -> LLMManager:
+    """获取全局LLM管理器实例"""
+    global _llm_manager
+    if _llm_manager is None:
+        _llm_manager = LLMManager()
+    return _llm_manager
+
+def initialize_llm_manager(settings_file: Optional[Path] = None) -> LLMManager:
+    """初始化LLM管理器"""
+    global _llm_manager
+    _llm_manager = LLMManager(settings_file)
+    return _llm_manager

@@ -1,0 +1,51 @@
+# Ambientes virtuais
+.venv/
+venv/
+ENV/
+env/
+runtime/
+
+# Caches e compilação
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+
+# Banco de dados e sessões
+*.db
+*.sqlite
+*.sqlite3
+sessao-ip.json
+accounts.json
+tiktok_accounts.json
+youtube_channels.json
+tiktok-downloads-history.json
+tiktok-channels-accounts.json
+
+# Cookies e Autenticação
+cookies*.txt
+*.cookie
+.env
+
+# Arquivos de log
+*.log
+backend.log
+server.log
+
+# Mídias e downloads baixados
+downloads/
+projects/
+data/
+*.mp4
+*.mkv
+*.avi
+*.webm
+*.mov
+!backend/assets/outro/*.mp4
+
+# IDEs e Sistema Operacional
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini

@@ -1,0 +1,441 @@
+"""
+本地导入处理任务
+处理视频文件上传后的异步任务：字幕生成、缩略图生成、处理流程启动
+"""
+
+import logging
+from pathlib import Path
+from typing import NoReturn, Optional
+from celery import Celery
+from backend.core.database import session_scope
+from backend.services.project_service import ProjectService
+from backend.services.cloud_transcription import CloudTranscriptionError
+from backend.utils.thumbnail_generator import generate_project_thumbnail
+from backend.utils.task_submission_utils import submit_video_pipeline_task
+
+logger = logging.getLogger(__name__)
+
+# 获取Celery应用实例
+from backend.core.celery_app import celery_app
+
+
+class ImportProcessingError(Exception):
+    """未预期的导入故障。
+
+    交给 Celery 记成带 exc_type 的 FAILURE，不要自己 update_state(FAILURE)。
+    缺字幕、缺密钥用下面的子类抛出：Sentry 只保留异常类型、不保留正文，
+    子类才能和这条未预期故障分开归组。
+    """
+
+    kind = "unexpected"
+
+
+class ImportSubtitleUnavailable(ImportProcessingError):
+    """预期内的字幕/转写配置问题。用户看到的文案和 last_error_code 不变。"""
+
+    kind = "missing-subtitle"
+
+
+class ImportMissingCredential(ImportProcessingError):
+    """预期内的密钥或提供商配置问题。用户看到的文案和 last_error_code 不变。"""
+
+    kind = "missing-key"
+
+
+class ImportSourceUnusable(ImportProcessingError):
+    """源视频本身不能走字幕路线（比最短片段还短 / 没有音轨又没带字幕）。用户输入，不是故障：不上报 Sentry。"""
+
+    kind = "source-input"
+
+
+# 这些码已经带了「设置 → 转写」去向，归到缺字幕，即使用户原文里提过密钥。
+_WHISPER_STATE_CODES = frozenset({
+    "whisper_not_installed",
+    "whisper_install_failed",
+    "transcription_empty",
+})
+_SUBTITLE_FAILURE_CODES = _WHISPER_STATE_CODES | {"subtitle_setup"}
+
+# 只匹配明确的配置说明。不要用 unauthorized / authentication，
+# 否则连接被拒绝一类故障会从「未预期」桶里被抽走。
+_MISSING_KEY_NEEDLES = (
+    "没有可用的 llm",
+    "缺少 api key",
+    "缺少api key",
+    "未配置llm",
+    "未配置 api",
+    "api key为空",
+    "api key 为空",
+    "invalid api key",
+    "incorrect api key",
+    "missing api key",
+    "no api key",
+    "api连接测试失败",
+    "连接测试失败",
+    "openai_api_key",
+    "azure_speech_key",
+    "google_speech_api_key",
+    "google_application_credentials",
+    "custom_api_key",
+    "请配置api key",
+    "请配置 api key",
+    "配置api密钥",
+    "配置 api 密钥",
+    "api密钥",
+    "api key",
+    "api_key",
+)
+
+
+def classify_import_failure(error: str, error_code: Optional[str] = None) -> type[ImportProcessingError]:
+    """选出 Sentry / 日志用的异常类型。不改写用户可见文案。"""
+    from backend.pipeline.failures import CODE_LLM_NOT_CONFIGURED
+
+    from backend.pipeline.media_precheck import SOURCE_INPUT_CODES
+
+    code = (error_code or "").strip()
+    if code in SOURCE_INPUT_CODES:
+        return ImportSourceUnusable
+    if code == CODE_LLM_NOT_CONFIGURED or _message_is_missing_credential(error, code):
+        return ImportMissingCredential
+    if code in _SUBTITLE_FAILURE_CODES:
+        return ImportSubtitleUnavailable
+    return ImportProcessingError
+
+
+def _message_is_missing_credential(error: str, error_code: str) -> bool:
+    if error_code in _WHISPER_STATE_CODES:
+        return False
+    text = (error or "").lower()
+    return any(needle in text for needle in _MISSING_KEY_NEEDLES)
+
+
+def import_failure_kind_for_type(type_name: str) -> Optional[str]:
+    for cls in (ImportSubtitleUnavailable, ImportMissingCredential, ImportSourceUnusable, ImportProcessingError):
+        if cls.__name__ == type_name:
+            return cls.kind
+    return None
+
+
+def kind_of_exception(exc: BaseException) -> Optional[str]:
+    if isinstance(exc, ImportProcessingError):
+        return exc.kind
+    return None
+
+
+def fingerprint_for_import_kind(kind: str) -> Optional[list[str]]:
+    """配置类失败使用固定 fingerprint。未预期故障保留 Sentry 默认栈归组。"""
+    if kind in {"missing-subtitle", "missing-key"}:
+        return ["import-processing", kind]
+    return None
+
+
+def _record_import_failure(
+    project_service,
+    project_id: str,
+    error: str,
+    error_code: Optional[str] = None,
+) -> None:
+    """项目标失败，并把原因写进 project_metadata.last_error（详情页从这里读）。"""
+    message = (error or "导入失败")[:2000]
+    project_service.update_project_status(project_id, "failed")
+    try:
+        project = project_service.get(project_id)
+        if project is None:
+            return
+        meta = dict(getattr(project, "project_metadata", None) or {})
+        meta["last_error"] = message
+        if error_code:
+            meta["last_error_code"] = error_code
+        project_service.update(project_id, project_metadata=meta)
+    except Exception:
+        logger.warning("写入导入失败原因失败: %s", project_id, exc_info=True)
+
+
+def _fail_import(
+    project_service,
+    project_id: str,
+    error: str,
+    error_code: Optional[str] = None,
+) -> NoReturn:
+    """记录用户可见的失败原因，再抛出异常让结果后端保存 exc_type。
+
+    手动把状态写成 FAILURE、meta 里只放 error 然后 return，结果后端没有 exc_type。
+    worker 随后 mark_as_done / mark_as_failure 解码时会抛
+    ValueError: Exception information must include the exception type。
+    """
+    _record_import_failure(project_service, project_id, error, error_code=error_code)
+    exc_cls = classify_import_failure(error, error_code)
+    logger.error(
+        "导入失败分类: kind=%s exc=%s code=%s project=%s",
+        exc_cls.kind,
+        exc_cls.__name__,
+        error_code or "-",
+        project_id,
+    )
+    raise exc_cls(error)
+
+
+def import_subtitle_failure(speech_error: Optional[str | CloudTranscriptionError] = None):
+    """导入关卡没有可用字幕时，沿用流水线同一套失败码和「设置 → 转写」提示。
+
+    这只说明下一步该去哪，不表示 Whisper 一定能转写成功。
+    """
+    from backend.pipeline.failures import (
+        HINT_SUBTITLE,
+        PipelineFailure,
+        failure_from_speech_error,
+        cloud_transcription_failure,
+        missing_subtitle_failure,
+    )
+
+    try:
+        if isinstance(speech_error, CloudTranscriptionError):
+            return cloud_transcription_failure(str(speech_error))
+        if speech_error:
+            return failure_from_speech_error(speech_error)
+        return missing_subtitle_failure()
+    except Exception:
+        logger.warning("构造字幕失败说明失败", exc_info=True)
+        return PipelineFailure(
+            "SUBTITLE",
+            "没有字幕可分析：视频不带字幕，这次也没有生成可用字幕。",
+            HINT_SUBTITLE,
+            code="subtitle_setup",
+        )
+
+
+def _generate_import_subtitle(task, project_id: str, video_path: str):
+    """转写字幕。不持有数据库会话：Whisper 可能跑很久。返回 (srt_path, speech_error)。"""
+    logger.info(f"开始为项目 {project_id} 生成字幕...")
+    task.update_state(state='PROGRESS', meta={'progress': 40, 'message': '生成字幕...'})
+    speech_error = None
+    speech_config = None
+    srt_path = None
+    try:
+        from backend.utils.speech_recognizer import generate_subtitle_for_video, configured_whisper_model
+        from backend.core.desktop_config import get_desktop_config
+
+        config = get_desktop_config()
+        speech_config = config.speech_recognition
+        from backend.services.ai_model_settings import load as load_model_settings
+        models = load_model_settings()
+        if models and models.transcription:
+            from copy import deepcopy
+            speech_config = deepcopy(speech_config)
+            speech_config.method = 'whisper_local' if models.transcription.provider == 'whisper_local' else 'auto'
+            if models.transcription.provider == 'whisper_local':
+                speech_config.whisper_config.model_name = models.transcription.model
+            speech_config.enable_fallback = False
+
+        logger.info(f"使用语音转写配置 - 方法: {speech_config.method}")
+
+        if models and models.transcription and models.transcription.provider in {"cloud", "sensevoice_local"}:
+            generated_subtitle = generate_subtitle_for_video(
+                Path(video_path), method="auto", language=speech_config.whisper_config.language,
+                timeout=speech_config.whisper_config.timeout)
+        elif speech_config.method == "whisper_local":
+            model = configured_whisper_model(speech_config.whisper_config.model_name)
+            language = speech_config.whisper_config.language
+            enable_timestamps = speech_config.whisper_config.enable_timestamps
+            enable_punctuation = speech_config.whisper_config.enable_punctuation
+            enable_speaker_diarization = speech_config.whisper_config.enable_speaker_diarization
+            timeout = speech_config.whisper_config.timeout
+
+            logger.info(f"Whisper配置 - 模型: {model}, 语言: {language}, 时间戳: {enable_timestamps}")
+
+            generated_subtitle = generate_subtitle_for_video(
+                Path(video_path),
+                language=language,
+                model=model,
+                method=speech_config.method,
+                enable_timestamps=enable_timestamps,
+                enable_punctuation=enable_punctuation,
+                enable_speaker_diarization=enable_speaker_diarization,
+                timeout=timeout
+            )
+        else:
+            logger.info(f"使用API服务 - {speech_config.method}")
+
+            if speech_config.method == "openai_api":
+                api_config = speech_config.openai_config
+            elif speech_config.method == "azure_speech":
+                api_config = speech_config.azure_config
+            elif speech_config.method == "google_speech":
+                api_config = speech_config.google_config
+            elif speech_config.method == "aliyun_speech":
+                api_config = speech_config.aliyun_config
+            elif speech_config.method == "custom_api":
+                api_config = speech_config.custom_api_config
+            else:
+                raise ValueError(f"不支持的语音识别方法: {speech_config.method}")
+
+            generated_subtitle = generate_subtitle_for_video(
+                Path(video_path),
+                method=speech_config.method,
+                language=api_config.language,
+                api_key=api_config.api_key,
+                enable_timestamps=api_config.enable_timestamps,
+                enable_punctuation=api_config.enable_punctuation
+            )
+
+        srt_path = str(generated_subtitle)
+        logger.info(f"语音转写成功: {srt_path}")
+    except CloudTranscriptionError as error:
+        # Keep provider identity across this legacy boundary; do not infer local ASR from text.
+        logger.warning("云端转写失败: %s", error)
+        return None, error
+    except Exception as e:
+        logger.error(f"语音转写失败: {str(e)}")
+        speech_error = str(e)
+
+        if speech_config is not None and speech_config.enable_fallback and speech_config.fallback_method != speech_config.method:
+            try:
+                logger.info(f"尝试回退方法: {speech_config.fallback_method}")
+                from backend.utils.speech_recognizer import generate_subtitle_for_video, configured_whisper_model
+
+                if speech_config.fallback_method == "whisper_local":
+                    fallback_config = speech_config.whisper_config
+                    generated_subtitle = generate_subtitle_for_video(
+                        Path(video_path),
+                        language=fallback_config.language,
+                        model=configured_whisper_model(fallback_config.model_name),
+                        method=speech_config.fallback_method
+                    )
+                else:
+                    generated_subtitle = generate_subtitle_for_video(
+                        Path(video_path),
+                        method=speech_config.fallback_method
+                    )
+
+                srt_path = str(generated_subtitle)
+                speech_error = None
+                logger.info(f"回退方法成功: {srt_path}")
+            except Exception as fallback_error:
+                logger.error(f"回退方法也失败: {str(fallback_error)}")
+                speech_error = str(fallback_error)
+                srt_path = None
+        else:
+            srt_path = None
+    return srt_path, speech_error
+
+@celery_app.task(bind=True)
+def process_import_task(self, project_id: str, video_path: str, srt_file_path: Optional[str] = None):
+    """
+    处理本地导入的异步任务
+    
+    Args:
+        project_id: 项目ID
+        video_path: 视频文件路径
+        srt_file_path: 字幕文件路径（可选）
+    """
+    try:
+        logger.info(f"开始处理导入任务: {project_id}")
+
+        # 会话只包住查重和缩略图。转写可能很久，不能占着连接。
+        with session_scope() as db:
+            project_service = ProjectService(db)
+
+            from backend.models.task import Task, TaskStatus
+            existing_task = db.query(Task).filter(
+                Task.project_id == project_id,
+                Task.status == TaskStatus.RUNNING,
+                Task.name.like('%导入%')
+            ).first()
+
+            if existing_task and existing_task.celery_task_id != self.request.id:
+                logger.warning(f"项目 {project_id} 已有处理任务在运行 (任务ID: {existing_task.celery_task_id})，跳过重复处理")
+                return {
+                    'success': False,
+                    'error': '项目正在处理中，避免重复处理',
+                    'existing_task_id': existing_task.celery_task_id
+                }
+
+            self.update_state(state='PROGRESS', meta={'progress': 10, 'message': '开始处理...'})
+
+            logger.info(f"检查项目 {project_id} 缩略图...")
+            self.update_state(state='PROGRESS', meta={'progress': 20, 'message': '检查缩略图...'})
+
+            project = project_service.get(project_id)
+            if project and not project.thumbnail:
+                logger.info(f"项目 {project_id} 没有缩略图，开始生成...")
+                self.update_state(state='PROGRESS', meta={'progress': 25, 'message': '生成缩略图...'})
+
+                try:
+                    thumbnail_data = generate_project_thumbnail(project_id, Path(video_path))
+                    if thumbnail_data:
+                        project.thumbnail = thumbnail_data
+                        db.commit()
+                        logger.info(f"项目 {project_id} 缩略图生成并保存成功")
+                    else:
+                        logger.warning(f"项目 {project_id} 缩略图生成失败")
+                except Exception as e:
+                    logger.error(f"生成项目缩略图时发生错误: {e}")
+            else:
+                logger.info(f"项目 {project_id} 已有缩略图，跳过生成")
+
+        speech_error = None
+        srt_path = srt_file_path
+        # 比最短片段还短、或没有音轨又没带字幕：转写和分析注定白跑，先拦下（RC156 #10/#11）
+        from backend.pipeline.media_precheck import subtitle_route_failure
+        blocked = subtitle_route_failure(video_path, srt_available=bool(srt_path and Path(srt_path).exists()))
+        if blocked:
+            with session_scope() as db:
+                _fail_import(ProjectService(db), project_id, blocked.user_message(), error_code=blocked.code)
+        if not srt_path:
+            srt_path, speech_error = _generate_import_subtitle(self, project_id, video_path)
+
+        logger.info(f"更新项目 {project_id} 状态为处理中...")
+        self.update_state(state='PROGRESS', meta={'progress': 80, 'message': '启动处理流程...'})
+
+        with session_scope() as db:
+            project_service = ProjectService(db)
+            project_service.update_project_status(project_id, "processing")
+
+            if srt_path and Path(srt_path).exists():
+                try:
+                    task_result = submit_video_pipeline_task(
+                        project_id=project_id,
+                        input_video_path=video_path,
+                        input_srt_path=srt_path
+                    )
+                except Exception as e:
+                    logger.error(f"启动项目 {project_id} 处理失败: {str(e)}")
+                    _fail_import(project_service, project_id, str(e))
+                else:
+                    if task_result['success']:
+                        logger.info(f"项目 {project_id} 处理任务已启动，Celery任务ID: {task_result['task_id']}")
+                        self.update_state(state='PROGRESS', meta={'progress': 100, 'message': '处理流程已启动'})
+                    else:
+                        logger.error(f"Celery任务提交失败: {task_result['error']}")
+                        _fail_import(project_service, project_id, task_result['error'])
+            else:
+                failure = import_subtitle_failure(speech_error)
+                logger.error("导入没有可用字幕: %s (%s)", failure.user_message(), failure.code)
+                _fail_import(
+                    project_service,
+                    project_id,
+                    failure.user_message(),
+                    error_code=failure.code,
+                )
+
+        logger.info(f"导入任务完成: {project_id}")
+        return {
+            'status': 'completed',
+            'project_id': project_id,
+            'message': '导入处理完成'
+        }
+
+    except ImportProcessingError:
+        raise
+    except Exception as e:
+        logger.error(f"导入任务失败: {project_id}, 错误: {e}")
+
+        # 预期失败已经记过原因。这里只兜底未预料的异常，仍然不要手动写 FAILURE。
+        try:
+            with session_scope() as failure_db:
+                project_service = ProjectService(failure_db)
+                _record_import_failure(project_service, project_id, str(e))
+        except Exception:
+            logger.warning("导入任务失败后更新项目状态失败: %s", project_id, exc_info=True)
+        raise

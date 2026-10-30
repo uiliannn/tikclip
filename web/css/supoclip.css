@@ -1,0 +1,1818 @@
+/* ==========================================================================
+   TikClip Web — Design System inspirado no SupoClip
+   Suporta Tema Claro (Padrão SupoClip) e Tema Escuro
+   ========================================================================== */
+
+:root,
+[data-theme="light"] {
+  --bg-page: #FAF9F5;
+  --bg-sidebar: #F6F5F0;
+  --bg-card: #FFFFFF;
+  --bg-subtle: #F3F2EC;
+  --bg-hover: #ECEAE2;
+  --bg-input: #FFFFFF;
+
+  --text-main: #141413;
+  --text-secondary: #575653;
+  --text-muted: #8C8B85;
+
+  --border-color: #E6E4DD;
+  --border-strong: #D4D1C7;
+
+  --primary-bg: #141413;
+  --primary-fg: #FFFFFF;
+  --primary-hover: #2C2C2A;
+
+  --accent-gemini: #2563EB;
+  --accent-gemini-soft: rgba(37, 99, 235, 0.08);
+  --accent-deepseek: #4F46E5;
+  --accent-deepseek-soft: rgba(79, 70, 229, 0.08);
+
+  --warn-bg: #FFFBEB;
+  --warn-border: #FDE68A;
+  --warn-text: #92400E;
+
+  --ok-color: #10B981;
+  --err-color: #EF4444;
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow-md: 0 6px 24px rgba(20, 20, 19, 0.06);
+  --shadow-lg: 0 14px 36px rgba(20, 20, 19, 0.10);
+
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 20px;
+}
+
+[data-theme="dark"] {
+  --bg-page: #0E0E11;
+  --bg-sidebar: #141418;
+  --bg-card: #18181D;
+  --bg-subtle: #202027;
+  --bg-hover: #282832;
+  --bg-input: #141418;
+
+  --text-main: #F4F4F6;
+  --text-secondary: #A1A1AA;
+  --text-muted: #71717A;
+
+  --border-color: #27272F;
+  --border-strong: #383842;
+
+  --primary-bg: #F4F4F6;
+  --primary-fg: #111113;
+  --primary-hover: #E4E4E7;
+
+  --warn-bg: rgba(245, 158, 11, 0.12);
+  --warn-border: rgba(245, 158, 11, 0.35);
+  --warn-text: #FCD34D;
+
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 8px 28px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 16px 44px rgba(0, 0, 0, 0.55);
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body {
+  height: 100%;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background-color: var(--bg-page);
+  color: var(--text-main);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+button, input, select, textarea {
+  font-family: inherit;
+  font-size: inherit;
+  color: inherit;
+}
+
+/* ==========================================================================
+   LAYOUT PRINCIPAL
+   ========================================================================== */
+.sc-layout {
+  display: flex;
+  min-height: 100vh;
+}
+
+/* BARRA LATERAL */
+.sc-sidebar {
+  width: 244px;
+  flex-shrink: 0;
+  background: var(--bg-sidebar);
+  border-right: 1px solid var(--border-color);
+  display: flex;
+  flex-direction: column;
+  padding: 16px 12px;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow-y: auto;
+}
+
+.sc-brand {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 4px 8px 16px;
+  font-weight: 700;
+  font-size: 17px;
+  letter-spacing: -0.02em;
+}
+
+.sc-brand-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-main);
+}
+
+.sc-new-btn {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 10px 14px;
+  background: var(--primary-bg);
+  color: var(--primary-fg);
+  border: none;
+  border-radius: 10px;
+  font-weight: 600;
+  font-size: 13.5px;
+  cursor: pointer;
+  margin-bottom: 14px;
+  transition: background 0.15s, transform 0.1s;
+  box-shadow: var(--shadow-sm);
+}
+
+.sc-new-btn:hover {
+  background: var(--primary-hover);
+}
+
+.sc-new-btn:active {
+  transform: scale(0.99);
+}
+
+.sc-kbd {
+  background: rgba(255, 255, 255, 0.18);
+  color: inherit;
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 5px;
+  font-weight: 600;
+}
+
+[data-theme="dark"] .sc-kbd {
+  background: rgba(0, 0, 0, 0.22);
+}
+
+.sc-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.sc-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 9px 12px;
+  border: 1px solid transparent;
+  background: transparent;
+  border-radius: 9px;
+  color: var(--text-secondary);
+  font-weight: 500;
+  font-size: 13.5px;
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.15s;
+}
+
+.sc-nav-item:hover {
+  background: var(--bg-hover);
+  color: var(--text-main);
+}
+
+.sc-nav-item.is-active {
+  background: var(--bg-card);
+  color: var(--text-main);
+  font-weight: 600;
+  border-color: var(--border-color);
+  box-shadow: var(--shadow-sm);
+}
+
+.sc-badge-count {
+  margin-left: auto;
+  background: var(--bg-subtle);
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 1px 7px;
+  border-radius: 99px;
+}
+
+.sc-search-btn {
+  margin-top: 14px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 8px 12px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 9px;
+  color: var(--text-muted);
+  font-size: 13px;
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+
+.sc-search-btn:hover {
+  border-color: var(--border-strong);
+  color: var(--text-main);
+}
+
+.sc-kbd-light {
+  margin-left: auto;
+  background: var(--bg-subtle);
+  padding: 1px 6px;
+  border-radius: 5px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.sc-sidebar-spacer {
+  flex: 1;
+}
+
+.sc-sidebar-status {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  margin-bottom: 10px;
+}
+
+.sc-status-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 3px 4px;
+  border-radius: 6px;
+}
+
+.sc-status-row:hover {
+  background: var(--bg-subtle);
+  color: var(--text-main);
+}
+
+.sc-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.sc-dot.is-ok {
+  background: var(--ok-color);
+  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.15);
+}
+
+.sc-dot.is-tt {
+  background: #EC4899;
+}
+
+.sc-status-label {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 500;
+}
+
+.sc-sidebar-footer {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border-color);
+}
+
+.sc-footer-link {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: transparent;
+  border: none;
+  padding: 6px 8px;
+  color: var(--text-secondary);
+  font-size: 12.5px;
+  cursor: pointer;
+  border-radius: 7px;
+}
+
+.sc-footer-link:hover {
+  background: var(--bg-hover);
+  color: var(--text-main);
+}
+
+.sc-user-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 6px;
+}
+
+.sc-avatar {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: #2C2523;
+  color: #FFFFFF;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 13px;
+}
+
+.sc-user-info {
+  overflow: hidden;
+}
+
+.sc-user-name {
+  font-weight: 600;
+  font-size: 13px;
+  line-height: 1.2;
+}
+
+.sc-user-email {
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ==========================================================================
+   ÁREA CENTRAL
+   ========================================================================== */
+.sc-main {
+  flex: 1;
+  min-width: 0;
+  padding: 36px 48px 64px;
+  max-width: 1260px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+/* ==========================================================================
+   TELA 1: CRIAR (HOME SUPOCLIP)
+   ========================================================================== */
+.sc-create-wrap {
+  max-width: 720px;
+  margin: 36px auto 0;
+}
+
+.sc-hero {
+  text-align: center;
+  margin-bottom: 26px;
+}
+
+.sc-hero-title {
+  font-size: 32px;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  margin-bottom: 8px;
+}
+
+.sc-hero-sub {
+  font-size: 14.5px;
+  color: var(--text-secondary);
+}
+
+/* Banner de Alerta / Status (Estilo SupoClip) */
+.sc-alert-banner {
+  background: var(--warn-bg);
+  border: 1px solid var(--warn-border);
+  color: var(--warn-text);
+  border-radius: var(--radius-lg);
+  padding: 16px 20px;
+  margin-bottom: 22px;
+  font-size: 13px;
+}
+
+.sc-alert-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+
+.sc-alert-link {
+  background: none;
+  border: none;
+  color: inherit;
+  text-decoration: underline;
+  font-weight: 600;
+  cursor: pointer;
+  font-size: 12.5px;
+}
+
+/* Caixa Principal de Input (Composer) */
+.sc-composer {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-xl);
+  padding: 18px 20px 14px;
+  box-shadow: var(--shadow-md);
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.sc-composer:focus-within,
+.sc-composer.is-dragover {
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow-lg);
+}
+
+.sc-composer-top {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.sc-link-icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: var(--bg-subtle);
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.sc-composer-input {
+  flex: 1;
+  border: none;
+  background: transparent;
+  font-size: 15px;
+  color: var(--text-main);
+  outline: none;
+}
+
+.sc-composer-input::placeholder {
+  color: var(--text-muted);
+}
+
+.sc-file-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--bg-subtle);
+  padding: 6px 12px;
+  border-radius: 99px;
+  font-size: 12.5px;
+  font-weight: 600;
+  margin-bottom: 12px;
+}
+
+.sc-composer-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.sc-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 999px;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--text-main);
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.sc-chip:hover {
+  background: var(--bg-subtle);
+  border-color: var(--border-strong);
+}
+
+.sc-chip-select {
+  appearance: none;
+  -webkit-appearance: none;
+  padding: 6px 26px 6px 12px;
+  background-color: var(--bg-card);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23666' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 9px center;
+  border: 1px solid var(--border-color);
+  border-radius: 999px;
+  font-size: 12.5px;
+  font-weight: 500;
+  cursor: pointer;
+  outline: none;
+}
+
+.sc-chip-select:hover {
+  background-color: var(--bg-subtle);
+  border-color: var(--border-strong);
+}
+
+.sc-chip-ai {
+  border-color: rgba(37, 99, 235, 0.35);
+  background: var(--accent-gemini-soft);
+  color: var(--accent-gemini);
+  font-weight: 600;
+}
+
+.sc-chip-ai.is-deepseek {
+  border-color: rgba(79, 70, 229, 0.35);
+  background: var(--accent-deepseek-soft);
+  color: var(--accent-deepseek);
+}
+
+.sc-chip-badge {
+  background: var(--primary-bg);
+  color: var(--primary-fg);
+  font-size: 10.5px;
+  font-weight: 700;
+  width: 17px;
+  height: 17px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.sc-submit-circle {
+  margin-left: auto;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: none;
+  background: var(--primary-bg);
+  color: var(--primary-fg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: transform 0.15s, opacity 0.15s;
+}
+
+.sc-submit-circle:hover {
+  transform: translateY(-1px);
+}
+
+.sc-submit-circle:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.sc-composer-footnote {
+  text-align: center;
+  font-size: 11.5px;
+  color: var(--text-muted);
+  margin-top: 14px;
+  line-height: 1.55;
+  padding: 0 16px;
+}
+
+.sc-composer-footnote b {
+  color: var(--text-secondary);
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+/* Seção Recentes na Home */
+.sc-recent-section {
+  max-width: 920px;
+  margin: 54px auto 0;
+}
+
+.sc-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.sc-section-title {
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.sc-link-subtle {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.sc-link-subtle:hover {
+  color: var(--text-main);
+}
+
+.sc-recent-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(195px, 1fr));
+  gap: 18px;
+}
+
+.sc-recent-card {
+  position: relative;
+  aspect-ratio: 9 / 14;
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  background: radial-gradient(circle at 50% 35%, #3a2e28 0%, #161516 75%);
+  cursor: pointer;
+  border: 1px solid var(--border-color);
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  padding: 16px;
+  color: #FFFFFF;
+  transition: transform 0.18s, box-shadow 0.18s;
+}
+
+.sc-recent-card:hover {
+  transform: translateY(-3px);
+  box-shadow: var(--shadow-lg);
+}
+
+.sc-recent-thumb {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0.72;
+  transition: opacity 0.2s;
+}
+
+.sc-recent-card:hover .sc-recent-thumb {
+  opacity: 0.85;
+}
+
+.sc-recent-overlay {
+  position: relative;
+  z-index: 2;
+  background: linear-gradient(to top, rgba(0,0,0,0.88), transparent);
+  margin: -16px;
+  padding: 40px 14px 14px;
+}
+
+.sc-recent-title {
+  font-weight: 600;
+  font-size: 13px;
+  line-height: 1.35;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.sc-recent-meta {
+  font-size: 11.5px;
+  color: rgba(255, 255, 255, 0.72);
+  margin-top: 4px;
+}
+
+/* ==========================================================================
+   TELA 2: PROGRESSO DE GERAÇÃO & DETALHE DO PROJETO (PRINT 1 DO SUPOCLIP)
+   ========================================================================== */
+.sc-back-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  margin-bottom: 12px;
+}
+
+.sc-back-link:hover {
+  color: var(--text-main);
+}
+
+.sc-proj-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+  margin-bottom: 28px;
+}
+
+.sc-proj-title {
+  font-size: 23px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1.25;
+}
+
+.sc-proj-sub {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  color: var(--text-muted);
+  font-size: 13px;
+  margin-top: 6px;
+}
+
+.sc-proj-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+/* Bloco de Progresso em 4 Etapas (Idêntico ao Print 1) */
+.sc-progress-panel {
+  margin-bottom: 34px;
+}
+
+.sc-eta-title {
+  font-size: 21px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  margin-bottom: 14px;
+}
+
+.sc-progress-track {
+  width: 100%;
+  height: 7px;
+  background: var(--bg-subtle);
+  border-radius: 99px;
+  overflow: hidden;
+  margin-bottom: 10px;
+}
+
+.sc-progress-fill {
+  height: 100%;
+  border-radius: 99px;
+  background: linear-gradient(90deg, #D4E4BC 0%, #8AB8B2 50%, #98A8D8 100%);
+  transition: width 0.5s ease;
+}
+
+.sc-steps-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  font-size: 12.5px;
+  color: var(--text-muted);
+  margin-bottom: 14px;
+}
+
+.sc-step-item {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.sc-step-item.is-done {
+  color: var(--text-secondary);
+}
+
+.sc-step-item.is-current {
+  color: var(--text-main);
+  font-weight: 700;
+}
+
+.sc-progress-hint {
+  font-size: 12.5px;
+  color: var(--text-muted);
+}
+
+/* Skeleton Cards 9:16 (Print 1) */
+.sc-skeleton-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 18px;
+  margin-top: 22px;
+}
+
+@media (max-width: 1100px) {
+  .sc-skeleton-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+.sc-skeleton-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.sc-skeleton-box {
+  aspect-ratio: 9 / 16;
+  border-radius: var(--radius-lg);
+  background: linear-gradient(120deg, var(--bg-subtle) 25%, var(--bg-hover) 50%, var(--bg-subtle) 75%);
+  background-size: 200% 100%;
+  animation: scShimmer 1.8s infinite linear;
+}
+
+.sc-skeleton-card:nth-child(1) .sc-skeleton-box {
+  background: radial-gradient(circle at 50% 50%, rgba(168, 152, 228, 0.18), var(--bg-subtle) 75%);
+}
+
+.sc-skeleton-line {
+  height: 10px;
+  border-radius: 6px;
+  background: var(--bg-subtle);
+  width: 75%;
+}
+
+.sc-skeleton-line.is-short {
+  width: 48%;
+}
+
+@keyframes scShimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* ==========================================================================
+   GRID DE CORTES PRONTOS (9:16)
+   ========================================================================== */
+.sc-clips-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 14px 18px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  margin-bottom: 22px;
+}
+
+.sc-clips-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(255px, 1fr));
+  gap: 20px;
+}
+
+.sc-clip-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  box-shadow: var(--shadow-sm);
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.sc-clip-card:hover {
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow-md);
+}
+
+.sc-clip-media {
+  position: relative;
+  aspect-ratio: 9 / 16;
+  background: #0B0B0E;
+  overflow: hidden;
+}
+
+.sc-clip-video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.sc-clip-badges {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  right: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  pointer-events: none;
+}
+
+.sc-pill-status {
+  padding: 3px 9px;
+  border-radius: 99px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  background: rgba(20, 20, 19, 0.78);
+  color: #FFFFFF;
+  backdrop-filter: blur(6px);
+}
+
+.sc-pill-status.is-pronto { background: rgba(16, 185, 129, 0.88); }
+.sc-pill-status.is-publicado { background: rgba(59, 130, 246, 0.88); }
+.sc-pill-status.is-renderizando { background: rgba(245, 158, 11, 0.88); }
+
+.sc-clip-body {
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  flex: 1;
+}
+
+.sc-clip-title {
+  font-weight: 600;
+  font-size: 13.5px;
+  line-height: 1.35;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.sc-clip-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.sc-tag {
+  font-size: 11px;
+  color: var(--text-secondary);
+  background: var(--bg-subtle);
+  padding: 2px 7px;
+  border-radius: 5px;
+}
+
+.sc-clip-actions {
+  margin-top: auto;
+  display: flex;
+  gap: 6px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border-color);
+}
+
+/* ==========================================================================
+   TELA 5: AGENTES E API & TELA 6: CONFIGURAÇÕES (PRINTS 3 E 4 DO SUPOCLIP)
+   ========================================================================== */
+.sc-page-narrow {
+  max-width: 760px;
+  margin: 0 auto;
+}
+
+.sc-page-head {
+  margin-bottom: 26px;
+}
+
+.sc-page-title {
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  margin-bottom: 6px;
+}
+
+.sc-page-desc {
+  color: var(--text-secondary);
+  font-size: 13.5px;
+  line-height: 1.55;
+}
+
+.sc-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  padding: 22px 24px;
+  margin-bottom: 18px;
+  box-shadow: var(--shadow-sm);
+}
+
+.sc-card-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.sc-card-icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  background: var(--bg-subtle);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  color: var(--text-main);
+  flex-shrink: 0;
+}
+
+.sc-card-title {
+  font-weight: 700;
+  font-size: 14.5px;
+}
+
+.sc-card-sub {
+  font-size: 12.5px;
+  color: var(--text-muted);
+}
+
+/* CHAVE SELETORA GEMINI vs DEEPSEEK */
+.sc-ai-switch-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  margin-bottom: 20px;
+}
+
+.sc-ai-option {
+  border: 2px solid var(--border-color);
+  background: var(--bg-subtle);
+  border-radius: var(--radius-md);
+  padding: 16px;
+  cursor: pointer;
+  transition: all 0.18s;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  text-align: left;
+}
+
+.sc-ai-option:hover {
+  border-color: var(--border-strong);
+}
+
+.sc-ai-option.is-selected {
+  background: var(--bg-card);
+  border-color: var(--primary-bg);
+  box-shadow: var(--shadow-md);
+}
+
+.sc-ai-option-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.sc-ai-name {
+  font-weight: 700;
+  font-size: 15px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sc-ai-pill-active {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 9px;
+  border-radius: 99px;
+  background: var(--primary-bg);
+  color: var(--primary-fg);
+}
+
+.sc-ai-provider-box {
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: 16px;
+  margin-bottom: 14px;
+  background: var(--bg-page);
+}
+
+.sc-ai-provider-box.is-active-box {
+  border-color: var(--border-strong);
+  background: var(--bg-card);
+}
+
+/* PREVIEW DE LEGENDAS (PRINT 4 DO SUPOCLIP) */
+.sc-sub-layout {
+  display: grid;
+  grid-template-columns: 1fr 180px;
+  gap: 24px;
+  align-items: center;
+}
+
+@media (max-width: 680px) {
+  .sc-sub-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+.sc-phone-preview {
+  width: 180px;
+  aspect-ratio: 9 / 16;
+  border-radius: 16px;
+  background: radial-gradient(circle at 50% 42%, #7d5c45 0%, #3d2b1f 58%, #18110c 100%);
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 26px 14px;
+  text-align: center;
+  overflow: hidden;
+  box-shadow: inset 0 0 24px rgba(0, 0, 0, 0.45);
+}
+
+.sc-phone-caption {
+  font-weight: 800;
+  line-height: 1.25;
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.75);
+  word-break: break-word;
+  transition: all 0.12s;
+}
+
+.sc-color-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+
+.sc-color-dot {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 2px solid var(--border-color);
+  cursor: pointer;
+  transition: transform 0.12s;
+}
+
+.sc-color-dot:hover {
+  transform: scale(1.08);
+}
+
+.sc-color-dot.is-selected {
+  outline: 2px solid var(--text-main);
+  outline-offset: 2px;
+}
+
+/* ==========================================================================
+   FORMULÁRIOS E BOTÕES GERAIS
+   ========================================================================== */
+.sc-field {
+  margin-bottom: 14px;
+}
+
+.sc-label {
+  display: block;
+  font-size: 12.5px;
+  font-weight: 600;
+  margin-bottom: 6px;
+  color: var(--text-main);
+}
+
+.sc-input,
+.sc-select,
+.sc-textarea {
+  width: 100%;
+  padding: 9px 12px;
+  background: var(--bg-input);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  color: var(--text-main);
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.sc-input:focus,
+.sc-select:focus,
+.sc-textarea:focus {
+  border-color: var(--text-main);
+}
+
+.sc-slider-wrap {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.sc-slider {
+  flex: 1;
+  accent-color: var(--primary-bg);
+  cursor: pointer;
+}
+
+.sc-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 8px 15px;
+  border-radius: var(--radius-sm);
+  font-weight: 600;
+  font-size: 13px;
+  border: 1px solid var(--border-color);
+  background: var(--bg-card);
+  color: var(--text-main);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.sc-btn:hover {
+  background: var(--bg-subtle);
+  border-color: var(--border-strong);
+}
+
+.sc-btn-primary {
+  background: var(--primary-bg);
+  color: var(--primary-fg);
+  border-color: var(--primary-bg);
+}
+
+.sc-btn-primary:hover {
+  background: var(--primary-hover);
+  color: var(--primary-fg);
+}
+
+.sc-btn-sm {
+  padding: 5px 10px;
+  font-size: 12px;
+}
+
+.sc-btn-ghost {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  padding: 6px 10px;
+}
+
+.sc-btn-ghost:hover {
+  background: var(--bg-subtle);
+  color: var(--text-main);
+}
+
+/* CARDS DE AGENTES E API (PRINT 3) */
+.sc-agent-cards {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.sc-agent-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  padding: 20px;
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.sc-agent-card:hover {
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow-md);
+}
+
+/* MODAIS E TOAST */
+.sc-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(3px);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 90px;
+  z-index: 999;
+}
+
+.sc-modal {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  width: 100%;
+  max-width: 560px;
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+}
+
+.sc-modal-lg {
+  max-width: 680px;
+  padding: 24px;
+}
+
+.sc-search-modal-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.sc-search-modal-head input {
+  flex: 1;
+  border: none;
+  background: transparent;
+  outline: none;
+  font-size: 15px;
+}
+
+.sc-search-results {
+  max-height: 360px;
+  overflow-y: auto;
+  padding: 8px;
+}
+
+.sc-search-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 10px 12px;
+  border: none;
+  background: transparent;
+  border-radius: 8px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.sc-search-item:hover {
+  background: var(--bg-subtle);
+}
+
+.sc-toast {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  background: var(--primary-bg);
+  color: var(--primary-fg);
+  padding: 12px 18px;
+  border-radius: 10px;
+  font-weight: 600;
+  font-size: 13px;
+  box-shadow: var(--shadow-lg);
+  opacity: 0;
+  transform: translateY(10px);
+  pointer-events: none;
+  transition: all 0.2s;
+  z-index: 1100;
+}
+
+.sc-toast.is-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* ==========================================================================
+   Hashtags do Projeto (Edição em Massa para todos os cortes)
+   ========================================================================== */
+.sc-hashtags-panel {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: 16px 20px;
+  margin-bottom: 22px;
+  box-shadow: var(--shadow-sm);
+}
+
+.sc-hashtags-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+
+.sc-hashtags-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-main);
+}
+
+.sc-hashtags-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-height: 38px;
+  align-items: center;
+  margin-bottom: 14px;
+  padding: 8px 12px;
+  background: var(--bg-body);
+  border: 1px dashed var(--border-color);
+  border-radius: 8px;
+}
+
+.sc-hashtags-empty {
+  font-size: 12.5px;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.sc-hashtag-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  color: var(--text-main);
+  padding: 4px 10px;
+  border-radius: 99px;
+  font-size: 12.5px;
+  font-weight: 500;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.03);
+  transition: all 0.15s;
+}
+
+.sc-hashtag-chip:hover {
+  border-color: var(--border-strong);
+}
+
+.sc-hashtag-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: bold;
+  padding: 0;
+  line-height: 1;
+  transition: background 0.15s, color 0.15s;
+}
+
+.sc-hashtag-remove:hover {
+  background: var(--err-color);
+  color: #fff;
+}
+
+.sc-hashtag-form {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.sc-hashtag-input {
+  flex: 1;
+  min-width: 240px;
+}
+
+.sc-hashtags-hint {
+  margin-top: 10px;
+  font-size: 11.5px;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+/* ==============================================================================
+   MONITORAMENTO DE CANAIS DO YOUTUBE
+   ============================================================================== */
+.sc-channels-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+  gap: 20px;
+  margin-top: 16px;
+}
+
+.sc-channel-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  padding: 22px;
+  box-shadow: var(--shadow-sm);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  transition: transform 0.15s, box-shadow 0.15s, border-color 0.15s;
+}
+
+.sc-channel-card:hover {
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow-md);
+}
+
+.sc-channel-header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.sc-channel-avatar {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  object-fit: cover;
+  background: var(--bg-subtle);
+  border: 2px solid var(--border-color);
+  flex-shrink: 0;
+}
+
+.sc-channel-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.sc-channel-name {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text-main);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sc-channel-handle {
+  font-size: 13px;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.sc-channel-handle a {
+  color: var(--text-muted);
+  text-decoration: none;
+}
+
+.sc-channel-handle a:hover {
+  color: var(--primary-bg);
+  text-decoration: underline;
+}
+
+/* DESTAQUE DA CONTA DO TIKTOK VINCULADA */
+.sc-channel-account-box {
+  background: linear-gradient(135deg, rgba(34, 197, 94, 0.08), rgba(16, 185, 129, 0.03));
+  border: 1px solid rgba(34, 197, 94, 0.3);
+  border-radius: var(--radius-md);
+  padding: 12px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.sc-channel-account-label {
+  font-size: 11.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #15803d;
+}
+
+.sc-channel-account-val {
+  font-size: 14px;
+  font-weight: 700;
+  color: #166534;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.sc-channel-meta-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 12.5px;
+  color: var(--text-muted);
+}
+
+.sc-channel-meta-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.sc-channel-meta-item b {
+  color: var(--text-main);
+}
+
+.sc-channel-video-box {
+  background: var(--bg-subtle);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: 12px;
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.sc-channel-video-thumb {
+  width: 76px;
+  height: 48px;
+  border-radius: 6px;
+  object-fit: cover;
+  background: #000;
+  flex-shrink: 0;
+}
+
+.sc-channel-video-details {
+  flex: 1;
+  min-width: 0;
+}
+
+.sc-channel-video-title {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-main);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-bottom: 2px;
+}
+
+.sc-channel-video-sub {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.sc-channel-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 4px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-color);
+}
+
+/* MODAL DE CADASTRO */
+.sc-modal-backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.65);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 20px;
+  animation: scFadeIn 0.15s ease-out;
+}
+
+.sc-modal-box {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  max-width: 580px;
+  width: 100%;
+  padding: 28px;
+  box-shadow: var(--shadow-lg);
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+.sc-modal-title {
+  font-size: 19px;
+  font-weight: 800;
+  color: var(--text-main);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.sc-modal-sub {
+  font-size: 13.5px;
+  color: var(--text-muted);
+  margin-top: 4px;
+}
+
+.sc-form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.sc-form-label {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-main);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.sc-form-hint {
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+.sc-highlight-field {
+  background: rgba(34, 197, 94, 0.06);
+  border: 1px solid rgba(34, 197, 94, 0.35);
+  border-radius: var(--radius-md);
+  padding: 14px;
+}
+
+.sc-modal-foot {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border-color);
+}
+
+/* -------------------------------------------------------------------------- */
+/* Aba: Vídeos do TikTok (Integração tiktok-downloader-web)                    */
+/* -------------------------------------------------------------------------- */
+
+.sc-tiktok-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: var(--radius-full);
+  font-size: 12px;
+  font-weight: 600;
+  background: rgba(254, 44, 85, 0.12);
+  color: #FE2C55;
+  border: 1px solid rgba(254, 44, 85, 0.25);
+}
+
+.sc-tiktok-avatar {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #00F2FE 0%, #4FACFE 40%, #FE2C55 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #FFFFFF;
+  font-size: 22px;
+  font-weight: 800;
+  box-shadow: 0 4px 14px rgba(254, 44, 85, 0.28);
+  flex-shrink: 0;
+}
+
+.sc-tiktok-caption-input {
+  width: 100%;
+  min-height: 72px;
+  max-height: 140px;
+  resize: vertical;
+  background: var(--bg-subtle);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--text-main);
+  font-family: inherit;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.sc-tiktok-caption-input:focus {
+  outline: none;
+  border-color: #FE2C55;
+  box-shadow: 0 0 0 2px rgba(254, 44, 85, 0.18);
+  background: var(--bg-card);
+}
+
+.sc-badge-published {
+  background: rgba(34, 197, 94, 0.9) !important;
+  color: #FFFFFF !important;
+  font-weight: 700 !important;
+  box-shadow: 0 2px 6px rgba(34, 197, 94, 0.4);
+}
+
+

@@ -1,0 +1,29 @@
+Você é um estrategista de conteúdo de vídeo. Com base no título e no resumo dos cortes abaixo, agrupe-os por tema e, para cada grupo, crie a recomendação de uma coleção.
+
+Requisitos:
+
+1. Cada coleção deve ter no mínimo 2 cortes e no máximo 5 cortes;
+2. Ao agrupar, considere com atenção as seguintes palavras-chave de tema:
+   - Investimentos e dinheiro: investimento, renda fixa, ações, fundos, bolsa, lucro, dividendos, cripto, economia, dívida
+   - Carreira e crescimento: trabalho, emprego, competência, aprendizado, promoção, entrevista, empreender, renda extra
+   - Comportamento e sociedade: comportamento, redes sociais, algoritmo, plataformas, violência, política, costumes
+   - Cultura e diferenças: cultura, diferença, Brasil, exterior, idioma, comida, tradição, regionalismo
+   - Lives e interação: live, interação, chat, seguidores, inscritos, doação, participação do público
+   - Relações e emoções: relacionamento, afeto, namoro, amizade, família, psicologia, autoestima
+   - Saúde e rotina: saúde, exercício, corrida, alimentação, sono, qualidade de vida, bem-estar
+   - Criação de conteúdo: criação, plataforma, YouTube, TikTok, fotografia, edição, monetização
+
+3. Cada coleção deve conter:
+   - Título da coleção (até 40 caracteres, refletindo o tema com precisão)
+   - Resumo da coleção (até 200 caracteres, explicando o valor e os destaques)
+   - Lista dos títulos dos cortes incluídos (ordenados por relevância ao tema)
+
+4. Princípios de agrupamento:
+   - Priorize a relevância temática: os cortes de uma mesma coleção devem ser muito coerentes entre si
+   - Considere a qualidade e a nota: prefira os cortes com nota mais alta
+   - Evite forçar temas diferentes dentro da mesma coleção
+   - Se um tema tiver muitos cortes, crie mais de uma coleção, mais específica
+
+Devolva em formato JSON, com os campos collection_title, collection_summary e clips.
+
+A seguir, a lista de cortes do vídeo:
