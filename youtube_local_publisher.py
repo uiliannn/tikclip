@@ -424,24 +424,41 @@ def publish_video(
             file_input.wait_for(state="attached", timeout=30000)
             file_input.set_input_files(str(v_path))
 
-            # Aguarda o diálogo de metadados do vídeo carregar
+            # Aguarda o assistente carregar a tela de detalhes do vídeo
             _prog("Aguardando carregamento da tela de detalhes...")
-            dialog = page.locator("ytcp-uploads-dialog, ytcp-video-metadata-editor").first
-            dialog.wait_for(state="visible", timeout=45000)
-            time.sleep(2)
+            try:
+                page.locator("ytcp-uploads-dialog").first.wait_for(state="attached", timeout=45000)
+            except Exception:
+                pass
+
+            # Aguarda diretamente o campo de título estar visível e interativo
+            title_input = page.locator(
+                "#title-textarea #textbox, [aria-label*='título' i][contenteditable='true'], [aria-label*='title' i][contenteditable='true'], #textbox[contenteditable='true']"
+            ).first
+            title_input.wait_for(state="visible", timeout=60000)
+            time.sleep(1)
             _dismiss_popups(page)
 
             # 1. PREENCHIMENTO DO TÍTULO
             _prog(f'Definindo título: "{final_title}"')
-            title_input = page.locator(
-                "#title-textarea #textbox, [aria-label*='título' i][contenteditable='true'], [aria-label*='title' i][contenteditable='true']"
-            ).first
-            title_input.wait_for(state="visible", timeout=20000)
             title_input.click()
+            time.sleep(0.3)
             page.keyboard.press("Control+A")
             page.keyboard.press("Backspace")
-            time.sleep(0.3)
-            title_input.fill(final_title)
+            time.sleep(0.2)
+            # Preenche via JS e via Playwright para garantir
+            page.evaluate("""(t) => {
+                const el = document.querySelector('#title-textarea #textbox, [aria-label*="título" i][contenteditable="true"], [aria-label*="title" i][contenteditable="true"]');
+                if (el) {
+                    el.textContent = t;
+                    el.dispatchEvent(new Event('input', { bubbles: true }));
+                    el.dispatchEvent(new Event('change', { bubbles: true }));
+                }
+            }""", final_title)
+            try:
+                title_input.fill(final_title)
+            except Exception:
+                pass
             time.sleep(0.5)
 
             # 2. PREENCHIMENTO DA DESCRIÇÃO
@@ -453,7 +470,21 @@ def publish_video(
                     ).first
                     if desc_input.is_visible(timeout=5000):
                         desc_input.click()
-                        desc_input.fill(description[:5000])
+                        time.sleep(0.2)
+                        page.keyboard.press("Control+A")
+                        page.keyboard.press("Backspace")
+                        page.evaluate("""(d) => {
+                            const el = document.querySelector('#description-textarea #textbox, [aria-label*="descrição" i][contenteditable="true"]');
+                            if (el) {
+                                el.textContent = d;
+                                el.dispatchEvent(new Event('input', { bubbles: true }));
+                                el.dispatchEvent(new Event('change', { bubbles: true }));
+                            }
+                        }""", description[:5000])
+                        try:
+                            desc_input.fill(description[:5000])
+                        except Exception:
+                            pass
                         time.sleep(0.5)
                 except Exception as exc:
                     _prog(f"Aviso ao preencher descrição: {exc}")
@@ -477,17 +508,21 @@ def publish_video(
             # 4. PÚBLICO-ALVO (OBRIGATÓRIO: NÃO É CONTEÚDO PARA CRIANÇAS)
             _prog("Definindo restrição de público: 'Não é conteúdo para crianças'...")
             try:
+                page.evaluate("""() => {
+                    const el = document.querySelector('tp-yt-paper-radio-button[name="VIDEO_MADE_FOR_KIDS_NOT_MFK"], tp-yt-paper-radio-button#radio-not-mfk');
+                    if (el) {
+                        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        el.click();
+                    }
+                }""")
+                time.sleep(0.5)
                 not_kids_radio = page.locator(
                     "tp-yt-paper-radio-button[name='VIDEO_MADE_FOR_KIDS_NOT_MFK'], tp-yt-paper-radio-button:has-text('Não é conteúdo para crianças'), tp-yt-paper-radio-button:has-text('No, it\\'s not made for kids')"
                 ).first
-                if not_kids_radio.is_visible(timeout=8000):
+                if not_kids_radio.is_visible(timeout=3000):
+                    not_kids_radio.scroll_into_view_if_needed()
                     not_kids_radio.click()
                     time.sleep(0.5)
-                else:
-                    page.evaluate("""() => {
-                        const el = document.querySelector('tp-yt-paper-radio-button[name="VIDEO_MADE_FOR_KIDS_NOT_MFK"]');
-                        if (el) el.click();
-                    }""")
             except Exception as exc:
                 _prog(f"Aviso ao marcar público-alvo: {exc}")
 
@@ -500,6 +535,7 @@ def publish_video(
                             "#toggle-button, button:has-text('Mostrar mais'), button:has-text('Show more')"
                         ).first
                         if show_more.is_visible(timeout=3000):
+                            show_more.scroll_into_view_if_needed()
                             show_more.click()
                             time.sleep(0.5)
                             tag_input = page.locator("#tags-container #text-input, input[aria-label*='Tags' i]").first
@@ -524,37 +560,48 @@ def publish_video(
 
             # 7. AVANÇAR ETAPAS ("Próximo" / "Avançar")
             _prog("Avançando para as etapas de elementos, verificações e visibilidade...")
-            next_btn = page.locator(
-                "#next-button, button#next-button, button:has-text('Próximo'), button:has-text('Avançar'), button:has-text('Next')"
-            ).first
-
             # O YouTube tem 3 passos até Visibilidade: Detalhes -> Elementos -> Verificações -> Visibilidade
             for step_num in range(1, 4):
+                next_btn = page.locator(
+                    "#next-button, ytcp-button#next-button, button#next-button, button:has-text('Próximo'), button:has-text('Avançar'), button:has-text('Next')"
+                ).first
                 if next_btn.is_visible(timeout=8000):
                     next_btn.click()
-                    time.sleep(1.2)
+                    time.sleep(1.5)
                     _dismiss_popups(page)
+                else:
+                    # Tenta clicar via evaluate
+                    page.evaluate("""() => {
+                        const btn = document.querySelector('#next-button, ytcp-button#next-button');
+                        if (btn) btn.click();
+                    }""")
+                    time.sleep(1.5)
 
             # 8. ETAPA DE VISIBILIDADE (Público, Não listado ou Privado)
             vis_lower = (visibility or "public").lower()
             _prog(f"Configurando visibilidade: {vis_lower.upper()}...")
 
+            vis_name = "PUBLIC"
             if vis_lower in ("unlisted", "nao_listado", "nao-listado"):
-                vis_radio = page.locator(
-                    "tp-yt-paper-radio-button[name='UNLISTED'], tp-yt-paper-radio-button:has-text('Não listado'), tp-yt-paper-radio-button:has-text('Unlisted')"
-                ).first
+                vis_name = "UNLISTED"
             elif vis_lower in ("private", "privado"):
-                vis_radio = page.locator(
-                    "tp-yt-paper-radio-button[name='PRIVATE'], tp-yt-paper-radio-button:has-text('Privado'), tp-yt-paper-radio-button:has-text('Private')"
-                ).first
-            else:
-                vis_radio = page.locator(
-                    "tp-yt-paper-radio-button[name='PUBLIC'], tp-yt-paper-radio-button:has-text('Público'), tp-yt-paper-radio-button:has-text('Public')"
-                ).first
+                vis_name = "PRIVATE"
 
-            if vis_radio.is_visible(timeout=6000):
-                vis_radio.click()
+            try:
+                page.evaluate(f"""() => {{
+                    const radio = document.querySelector('tp-yt-paper-radio-button[name="{vis_name}"]');
+                    if (radio) {{
+                        radio.scrollIntoView({{ behavior: 'smooth', block: 'center' }});
+                        radio.click();
+                    }}
+                }}""")
                 time.sleep(0.5)
+                vis_radio = page.locator(f"tp-yt-paper-radio-button[name='{vis_name}']").first
+                if vis_radio.is_visible(timeout=3000):
+                    vis_radio.click()
+                    time.sleep(0.5)
+            except Exception as exc:
+                _prog(f"Aviso ao selecionar visibilidade: {exc}")
 
             # Tenta pegar o link novamente se ainda não pegou
             if not video_url:
@@ -570,10 +617,16 @@ def publish_video(
             # 9. SALVAR / PUBLICAR
             _prog("Publicando o vídeo no YouTube Studio...")
             done_btn = page.locator(
-                "#done-button, button#done-button, button:has-text('Publicar'), button:has-text('Salvar'), button:has-text('Publish'), button:has-text('Save')"
+                "#done-button, ytcp-button#done-button, button#done-button, button:has-text('Publicar'), button:has-text('Salvar'), button:has-text('Publish'), button:has-text('Save')"
             ).first
-            done_btn.wait_for(state="visible", timeout=15000)
-            done_btn.click()
+            try:
+                done_btn.wait_for(state="visible", timeout=15000)
+                done_btn.click()
+            except Exception:
+                page.evaluate("""() => {
+                    const btn = document.querySelector('#done-button, ytcp-button#done-button');
+                    if (btn) btn.click();
+                }""")
             time.sleep(3)
 
             # 10. AGUARDA CONFIRMAÇÃO OU TELA DE SUCESSO
