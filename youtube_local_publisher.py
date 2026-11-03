@@ -498,10 +498,10 @@ def publish_video(
                         thumb_input = page.locator(
                             "input#file-loader, input[type='file'][accept*='image']"
                         ).first
-                        if thumb_input.is_attached():
-                            thumb_input.set_input_files(str(t_path))
-                            _prog("Miniatura personalizada enviada ✔")
-                            time.sleep(1)
+                        thumb_input.wait_for(state="attached", timeout=4000)
+                        thumb_input.set_input_files(str(t_path))
+                        _prog("Miniatura personalizada enviada ✔")
+                        time.sleep(1)
                     except Exception as exc:
                         _prog(f"Aviso: Não foi possível anexar a miniatura ({exc})")
 
