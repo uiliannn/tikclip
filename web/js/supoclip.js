@@ -1598,14 +1598,17 @@ async function renderYouTubePublisher(container) {
   wrap.append(
     h('div', { class: 'sc-page-head' },
       h('h1', { class: 'sc-page-title', text: 'Publicador YouTube Studio' }),
-      h('p', { class: 'sc-page-desc', text: 'Publique Shorts e Vídeos Normais (com capas em alta definição) diretamente em seus canais sem limites de API.' }),
+      h('p', { class: 'sc-page-desc', text: 'Publique seus cortes da biblioteca como Shorts ou Vídeos Normais (com capas em alta definição) diretamente em seus canais sem limites de API.' }),
     ),
   );
 
-  if (!state.ytPubTab) state.ytPubTab = 'shorts';
+  if (!state.ytPubTab) state.ytPubTab = 'cortes';
+  if (!state.ytSelectedClips) state.ytSelectedClips = new Set();
+  if (state.ytSearchTerm === undefined) state.ytSearchTerm = '';
 
   const tabs = [
-    ['shorts', '⚡ Publicar Shorts'],
+    ['cortes', '📚 Cortes da Biblioteca'],
+    ['shorts', '⚡ Publicar Shorts (Avulso)'],
     ['normal', '🎥 Publicar Vídeo Normal'],
     ['canais', '👥 Canais do YouTube'],
     ['fila', '📋 Fila & Status ao Vivo'],
@@ -1630,7 +1633,7 @@ async function renderYouTubePublisher(container) {
   container.replaceChildren(wrap);
 
   function renderSelectCanais() {
-    const sel = h('select', { class: 'sc-select', style: 'width:100%; max-width:320px;' });
+    const sel = h('select', { class: 'sc-select', style: 'width:100%; max-width:280px;' });
     if (!state.ytAccounts || !state.ytAccounts.length) {
       sel.append(h('option', { value: 'default' }, 'Canal Principal (Padrão)'));
     } else {
@@ -1699,8 +1702,299 @@ async function renderYouTubePublisher(container) {
     );
   }
 
-  // ABA 1: SHORTS
-  if (state.ytPubTab === 'shorts') {
+  // -------------------------------------------------------------
+  // ABA 0: CORTES PRONTOS DA BIBLIOTECA
+  // -------------------------------------------------------------
+  if (state.ytPubTab === 'cortes') {
+    const loadingCard = h('div', { class: 'sc-card', style: 'padding:32px; text-align:center; color:var(--text-muted);' },
+      'Carregando cortes prontos da sua biblioteca...'
+    );
+    body.append(loadingCard);
+
+    let allClips = [];
+    try {
+      const res = await apiSupo('/youtube-publisher/library-clips');
+      allClips = (res && res.clips) || [];
+    } catch (e) {
+      toast('Erro ao buscar cortes: ' + (e.message || e));
+    }
+
+    body.replaceChildren();
+
+    const inpBusca = h('input', {
+      class: 'sc-input',
+      placeholder: 'Buscar corte por título ou projeto...',
+      value: state.ytSearchTerm || '',
+      style: 'max-width:260px;',
+      oninput: (e) => {
+        state.ytSearchTerm = e.target.value;
+        filtrarERenderizar();
+      },
+    });
+
+    const inpIntervaloLote = h('input', {
+      class: 'sc-input',
+      type: 'number',
+      min: 1,
+      value: String(state.publishInterval || 15),
+      style: 'width:70px;',
+      onchange: (e) => { state.publishInterval = Math.max(1, parseInt(e.target.value) || 15); },
+    });
+
+    const statusBanner = h('div', { class: 'sc-card', style: 'margin-bottom:16px;' });
+    const gridContainer = h('div', { class: 'sc-clips-grid', style: 'margin-top:16px;' });
+
+    const btnSelTodos = h('button', {
+      class: 'sc-btn sc-btn-sm',
+      onclick: () => {
+        const filtrados = obterFiltrados();
+        if (state.ytSelectedClips.size === filtrados.length) {
+          state.ytSelectedClips.clear();
+        } else {
+          filtrados.forEach((c) => state.ytSelectedClips.add(c.clip_id));
+        }
+        filtrarERenderizar();
+      },
+    }, 'Selecionar todos');
+
+    const btnPublicarLote = h('button', {
+      class: 'sc-btn sc-btn-primary',
+      onclick: async () => {
+        const selecionadosIds = Array.from(state.ytSelectedClips);
+        if (!selecionadosIds.length) {
+          toast('Selecione ao menos um corte para publicar.');
+          return;
+        }
+
+        const itemsLote = allClips
+          .filter((c) => state.ytSelectedClips.has(c.clip_id))
+          .map((c) => ({
+            video_path: c.video_path,
+            title: c.title,
+            description: c.description || '',
+            tags: c.tags || [],
+            thumbnail_path: c.cover_path || null,
+            is_short: true,
+          }));
+
+        const contaAtiva = state.activeYtAccount || 'default';
+        const canalObj = (state.ytAccounts || []).find((a) => a.id === contaAtiva) || { name: 'Canal Principal' };
+
+        if (!confirm(`Deseja iniciar a publicação em lote de ${itemsLote.length} corte(s) no canal "${canalObj.name}" com intervalo de ${inpIntervaloLote.value} min?`)) return;
+
+        try {
+          await apiSupo('/youtube-publisher/publish-batch', {
+            method: 'POST',
+            body: JSON.stringify({
+              items: itemsLote,
+              account_id: contaAtiva,
+              interval_min: parseInt(inpIntervaloLote.value, 10) || 15,
+              visibility: 'public',
+            }),
+          });
+          toast(`Fila iniciada com ${itemsLote.length} cortes no YouTube!`);
+          state.ytPubTab = 'fila';
+          renderYouTubePublisher(container);
+        } catch (e) {
+          toast('Erro ao iniciar lote: ' + (e.message || e));
+        }
+      },
+    }, `🚀 Publicar Selecionados no YouTube (${state.ytSelectedClips.size})`);
+
+    function obterFiltrados() {
+      const termo = (state.ytSearchTerm || '').toLowerCase().trim();
+      if (!termo) return allClips;
+      return allClips.filter((c) =>
+        (c.title || '').toLowerCase().includes(termo) ||
+        (c.project_name || '').toLowerCase().includes(termo)
+      );
+    }
+
+    function filtrarERenderizar() {
+      const filtrados = obterFiltrados();
+      btnSelTodos.textContent = state.ytSelectedClips.size === filtrados.length && filtrados.length > 0
+        ? `Limpar seleção (${state.ytSelectedClips.size})`
+        : `Selecionar todos (${filtrados.length})`;
+      btnPublicarLote.textContent = `🚀 Publicar Selecionados (${state.ytSelectedClips.size})`;
+
+      gridContainer.replaceChildren();
+
+      if (!filtrados.length) {
+        gridContainer.append(
+          h('div', { class: 'sc-card', style: 'grid-column:1/-1; text-align:center; padding:40px; color:var(--text-muted);' },
+            allClips.length === 0
+              ? 'Nenhum corte pronto encontrado na biblioteca. Gere clipes na aba Criar para visualizá-los aqui!'
+              : 'Nenhum corte encontrado para a busca digitada.'
+          )
+        );
+        return;
+      }
+
+      for (const clip of filtrados) {
+        const isChecked = state.ytSelectedClips.has(clip.clip_id);
+
+        const chk = h('input', {
+          type: 'checkbox',
+          checked: isChecked,
+          style: 'transform:scale(1.2); cursor:pointer;',
+          onchange: (e) => {
+            if (e.target.checked) state.ytSelectedClips.add(clip.clip_id);
+            else state.ytSelectedClips.delete(clip.clip_id);
+            btnSelTodos.textContent = state.ytSelectedClips.size === filtrados.length
+              ? `Limpar seleção (${state.ytSelectedClips.size})`
+              : `Selecionar todos (${filtrados.length})`;
+            btnPublicarLote.textContent = `🚀 Publicar Selecionados (${state.ytSelectedClips.size})`;
+          },
+        });
+
+        const media = h('div', { class: 'sc-clip-media' });
+        if (clip.cover_url) {
+          media.append(h('img', { class: 'sc-clip-video', src: clip.cover_url, alt: clip.title }));
+        } else if (clip.video_url) {
+          media.append(h('video', { class: 'sc-clip-video', src: clip.video_url, controls: false, preload: 'metadata' }));
+        }
+
+        media.append(
+          h('div', { class: 'sc-clip-badges' },
+            h('span', { class: 'sc-pill-status is-pronto', text: 'PRONTO' }),
+            clip.duration_label ? h('span', { class: 'sc-pill-status', text: clip.duration_label }) : null,
+          )
+        );
+
+        const card = h('div', { class: 'sc-clip-card' },
+          media,
+          h('div', { class: 'sc-clip-body' },
+            h('div', { style: 'display:flex; align-items:flex-start; gap:8px;' },
+              chk,
+              h('div', { class: 'sc-clip-title', style: 'font-size:13px; font-weight:700;', text: clip.title }),
+            ),
+            h('div', { style: 'font-size:11px; color:var(--text-muted); display:flex; align-items:center; gap:4px;' },
+              '📺',
+              h('span', { style: 'white-space:nowrap; overflow:hidden; text-overflow:ellipsis;', text: clip.project_name }),
+            ),
+            h('div', { class: 'sc-clip-actions', style: 'display:flex; gap:6px; margin-top:auto;' },
+              h('button', {
+                class: 'sc-btn sc-btn-sm sc-btn-primary',
+                style: 'flex:1; font-size:12px; padding:6px 8px;',
+                title: 'Publicar este corte como YouTube Shorts',
+                onclick: async () => {
+                  const conta = state.activeYtAccount || 'default';
+                  if (!confirm(`Publicar "${clip.title}" como Shorts no YouTube?`)) return;
+                  try {
+                    toast('Iniciando envio do Shorts no YouTube...');
+                    await apiSupo('/youtube-publisher/publish-single', {
+                      method: 'POST',
+                      body: JSON.stringify({
+                        account_id: conta,
+                        video_path: clip.video_path,
+                        title: clip.title,
+                        description: clip.description,
+                        tags: clip.tags,
+                        thumbnail_path: clip.cover_path || null,
+                        is_short: true,
+                        visibility: 'public',
+                      }),
+                    });
+                    toast('Envio iniciado com sucesso!');
+                    state.ytPubTab = 'fila';
+                    renderYouTubePublisher(container);
+                  } catch (e) {
+                    toast('Erro ao publicar: ' + (e.message || e));
+                  }
+                },
+              }, '⚡ Shorts'),
+              h('button', {
+                class: 'sc-btn sc-btn-sm',
+                style: 'flex:1; font-size:12px; padding:6px 8px;',
+                title: 'Publicar este corte como Vídeo Normal com miniatura',
+                onclick: async () => {
+                  const conta = state.activeYtAccount || 'default';
+                  if (!confirm(`Publicar "${clip.title}" como Vídeo Normal no YouTube?`)) return;
+                  try {
+                    toast('Iniciando envio do vídeo no YouTube...');
+                    await apiSupo('/youtube-publisher/publish-single', {
+                      method: 'POST',
+                      body: JSON.stringify({
+                        account_id: conta,
+                        video_path: clip.video_path,
+                        title: clip.title,
+                        description: clip.description,
+                        tags: clip.tags,
+                        thumbnail_path: clip.cover_path || null,
+                        is_short: false,
+                        visibility: 'public',
+                      }),
+                    });
+                    toast('Envio iniciado com sucesso!');
+                    state.ytPubTab = 'fila';
+                    renderYouTubePublisher(container);
+                  } catch (e) {
+                    toast('Erro ao publicar: ' + (e.message || e));
+                  }
+                },
+              }, '🎥 Normal'),
+              clip.video_url ? h('button', {
+                class: 'sc-btn sc-btn-sm',
+                title: 'Assistir corte',
+                onclick: () => {
+                  const modal = document.getElementById('dialog-modal');
+                  const modalContent = document.getElementById('dialog-modal-content');
+                  modalContent.replaceChildren(
+                    h('div', { style: 'display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;' },
+                      h('h3', { style: 'margin:0; font-size:16px;', text: clip.title }),
+                      h('button', { class: 'sc-btn-ghost sc-btn-sm', onclick: () => { modal.style.display = 'none'; } }, '✕ Fechar'),
+                    ),
+                    h('video', { src: clip.video_url, controls: true, autoplay: true, style: 'width:100%; max-height:70vh; border-radius:8px;' }),
+                  );
+                  modal.style.display = 'flex';
+                },
+              }, '▶') : null,
+            ),
+          ),
+        );
+        gridContainer.append(card);
+      }
+    }
+
+    const bannerControles = h('div', {
+      class: 'sc-card',
+      style: 'margin-bottom:18px; padding:16px; display:flex; flex-direction:column; gap:12px;',
+    },
+      h('div', { style: 'display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;' },
+        h('div', null,
+          h('div', { style: 'font-weight:700; font-size:15px;', text: `📦 ${allClips.length} Cortes Prontos da Biblioteca` }),
+          h('div', { style: 'font-size:12px; color:var(--text-muted);', text: 'Selecione os clipes abaixo para publicar no YouTube em lote ou publique individualmente com 1 clique.' }),
+        ),
+        h('div', { style: 'display:flex; align-items:center; gap:8px;' },
+          h('label', { class: 'sc-label', style: 'margin:0;', text: 'Canal:' }),
+          renderSelectCanais(),
+        ),
+      ),
+      h('div', { style: 'display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; border-top:1px solid var(--border-color); padding-top:12px;' },
+        h('div', { style: 'display:flex; align-items:center; gap:8px;' },
+          inpBusca,
+          btnSelTodos,
+        ),
+        h('div', { style: 'display:flex; align-items:center; gap:8px;' },
+          h('span', { style: 'font-size:12px; color:var(--text-muted);', text: 'Intervalo:' }),
+          inpIntervaloLote,
+          h('span', { style: 'font-size:12px; color:var(--text-muted);', text: 'min' }),
+          btnPublicarLote,
+        ),
+      ),
+    );
+
+    body.append(bannerControles, statusBanner, gridContainer);
+    filtrarERenderizar();
+
+    pollStatus(statusBanner);
+    pollInterval = setInterval(() => pollStatus(statusBanner), 2500);
+  }
+
+  // -------------------------------------------------------------
+  // ABA 1: PUBLICAR SHORTS (AVULSO)
+  // -------------------------------------------------------------
+  else if (state.ytPubTab === 'shorts') {
     const inpVideo = h('input', { class: 'sc-input', placeholder: 'Caminho do arquivo .mp4 no computador (ex.: C:\\meu_video.mp4)' });
     const inpTitle = h('input', { class: 'sc-input', maxlength: 100, placeholder: 'Título do Shorts (ex: Segredo da Produtividade #Shorts)' });
     const txtDesc = h('textarea', { class: 'sc-input', rows: 3, placeholder: 'Descrição do Shorts, hashtags e links...', style: 'resize:vertical;' });
@@ -1716,65 +2010,6 @@ async function renderYouTubePublisher(container) {
       charCounter.textContent = `${inpTitle.value.length}/100`;
     };
 
-    const drawerClips = h('div', { style: 'display:none; background:var(--bg-subtle); padding:12px; border-radius:8px; margin-bottom:14px; border:1px solid var(--border-color);' });
-    const btnAbrirBiblioteca = h('button', {
-      class: 'sc-btn sc-btn-sm',
-      style: 'margin-right:8px;',
-      onclick: async () => {
-        if (drawerClips.style.display !== 'none') {
-          drawerClips.style.display = 'none';
-          return;
-        }
-        drawerClips.replaceChildren(h('div', { style: 'font-size:12px; color:var(--text-muted);' }, 'Buscando cortes prontos...'));
-        drawerClips.style.display = 'block';
-
-        const listaCortes = [];
-        for (const p of state.projects) {
-          try {
-            const clips = await apiExt(`/projects/${p.id}/clips`);
-            for (const c of clips) {
-              if (c.status === 'pronto' && c.has_video) {
-                listaCortes.push({ proj: p, clip: c });
-              }
-            }
-          } catch (_) {}
-        }
-
-        if (!listaCortes.length) {
-          drawerClips.replaceChildren(h('div', { style: 'font-size:12px; color:var(--text-muted);' }, 'Nenhum corte pronto encontrado nos projetos. Crie um corte primeiro na aba Criar!'));
-          return;
-        }
-
-        const grid = h('div', { style: 'display:grid; grid-template-columns:repeat(auto-fill, minmax(200px, 1fr)); gap:10px; max-height:240px; overflow-y:auto; margin-top:8px;' });
-        for (const item of listaCortes) {
-          grid.append(
-            h('div', {
-              class: 'sc-card',
-              style: 'padding:8px; cursor:pointer; border:1px solid var(--border-color); transition:all 0.15s ease;',
-              onclick: () => {
-                inpTitle.value = item.clip.title || 'Corte Viral';
-                charCounter.textContent = `${inpTitle.value.length}/100`;
-                txtDesc.value = item.clip.description || '';
-                inpTags.value = item.clip.tags || 'shorts, viral';
-                inpVideo.value = `[Projeto] ${item.proj.id} - ${item.clip.id}`;
-                inpVideo.dataset.projectId = item.proj.id;
-                inpVideo.dataset.variantId = item.clip.id;
-                drawerClips.style.display = 'none';
-                toast(`Corte "${item.clip.title}" selecionado para envio!`);
-              },
-            },
-              h('div', { style: 'font-weight:600; font-size:12px; margin-bottom:4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;', text: item.clip.title || 'Corte' }),
-              h('div', { style: 'font-size:11px; color:var(--text-muted);' }, `Projeto: ${item.proj.name || item.proj.id}`),
-            ),
-          );
-        }
-        drawerClips.replaceChildren(
-          h('div', { style: 'font-weight:600; font-size:12px; color:var(--text-main); margin-bottom:4px;' }, 'Clique em um corte pronto para preencher automaticamente:'),
-          grid,
-        );
-      },
-    }, '📚 Escolher da Biblioteca de Cortes');
-
     const statusCard = h('div', { class: 'sc-card', style: 'margin-top:16px;' });
 
     const btnEnviarShorts = h('button', {
@@ -1783,25 +2018,18 @@ async function renderYouTubePublisher(container) {
       onclick: async () => {
         const valVideo = inpVideo.value.trim();
         if (!valVideo) {
-          toast('Por favor, informe o caminho do vídeo ou selecione da biblioteca.');
+          toast('Por favor, informe o caminho do vídeo.');
           return;
         }
-        const pid = inpVideo.dataset.projectId;
-        const vid = inpVideo.dataset.variantId;
         const payload = {
           account_id: state.activeYtAccount || 'default',
+          video_path: valVideo,
           title: inpTitle.value.trim(),
           description: txtDesc.value.trim(),
           tags: inpTags.value.trim(),
           visibility: selVis.value,
           is_short: true,
         };
-        if (pid && vid && valVideo.startsWith('[Projeto]')) {
-          payload.project_id = pid;
-          payload.variant_id = vid;
-        } else {
-          payload.video_path = valVideo;
-        }
 
         try {
           btnEnviarShorts.disabled = true;
@@ -1822,7 +2050,7 @@ async function renderYouTubePublisher(container) {
         h('div', { class: 'sc-card-head' },
           h('div', { class: 'sc-card-icon' }, '⚡'),
           h('div', null,
-            h('div', { class: 'sc-card-title', text: 'Enviar YouTube Shorts' }),
+            h('div', { class: 'sc-card-title', text: 'Enviar YouTube Shorts (Arquivo Avulso)' }),
             h('div', { class: 'sc-card-sub', text: 'Vídeos verticais (9:16) com tag #Shorts automática, público-alvo configurado e postagem direta.' }),
           ),
         ),
@@ -1832,11 +2060,7 @@ async function renderYouTubePublisher(container) {
             renderSelectCanais(),
           ),
           h('div', null,
-            h('div', { style: 'display:flex; align-items:center; justify-content:space-between; margin-bottom:6px;' },
-              h('label', { class: 'sc-label', style: 'margin:0;', text: 'Arquivo de Vídeo (.mp4):' }),
-              btnAbrirBiblioteca,
-            ),
-            drawerClips,
+            h('label', { class: 'sc-label', text: 'Arquivo de Vídeo (.mp4):' }),
             inpVideo,
           ),
           h('div', null,
@@ -1870,7 +2094,9 @@ async function renderYouTubePublisher(container) {
     pollInterval = setInterval(() => pollStatus(statusCard), 2500);
   }
 
-  // ABA 2: VÍDEO NORMAL
+  // -------------------------------------------------------------
+  // ABA 2: PUBLICAR VÍDEO NORMAL (LONGO / HORIZONTAL)
+  // -------------------------------------------------------------
   else if (state.ytPubTab === 'normal') {
     const inpVideo = h('input', { class: 'sc-input', placeholder: 'Caminho do arquivo .mp4 no computador (ex.: C:\\meu_video_longo.mp4)' });
     const inpTitle = h('input', { class: 'sc-input', maxlength: 100, placeholder: 'Título do vídeo (até 100 caracteres)' });
@@ -2005,7 +2231,9 @@ async function renderYouTubePublisher(container) {
     pollInterval = setInterval(() => pollStatus(statusCard), 2500);
   }
 
+  // -------------------------------------------------------------
   // ABA 3: CANAIS DO YOUTUBE
+  // -------------------------------------------------------------
   else if (state.ytPubTab === 'canais') {
     const accList = h('div', { style: 'display:flex; flex-direction:column; gap:10px; margin-bottom:16px;' });
     for (const acc of (state.ytAccounts || [])) {
@@ -2095,86 +2323,22 @@ async function renderYouTubePublisher(container) {
     );
   }
 
+  // -------------------------------------------------------------
   // ABA 4: FILA & STATUS EM TEMPO REAL
+  // -------------------------------------------------------------
   else if (state.ytPubTab === 'fila') {
     const statusCard = h('div', { class: 'sc-card' });
-    const inpInterval = h('input', { class: 'sc-input', type: 'number', min: 1, value: 15, style: 'max-width:100px;' });
-
-    const btnLoteTodosCortes = h('button', {
-      class: 'sc-btn sc-btn-primary',
-      onclick: async () => {
-        btnLoteTodosCortes.disabled = true;
-        toast('Buscando todos os cortes prontos nos projetos...');
-        const items = [];
-        for (const p of state.projects) {
-          try {
-            const clips = await apiExt(`/projects/${p.id}/clips`);
-            for (const c of clips) {
-              if (c.status === 'pronto' && c.has_video) {
-                const st = await apiExt(`/projects/${p.id}`);
-                const jobs = (st.jobs || []).reduce((acc, j) => { acc[j.job_id] = j; return acc; }, {});
-                const variant = (st.output_variants || []).find((v) => v.id === c.id) || {};
-                const job = jobs[variant.render_job_id];
-                if (job && job.output_files && job.output_files.length) {
-                  items.push({
-                    video_path: job.output_files[0],
-                    title: c.title || 'Corte TikClip #Shorts',
-                    description: c.description || '',
-                    tags: c.tags || 'shorts, viral',
-                    is_short: true,
-                  });
-                }
-              }
-            }
-          } catch (_) {}
-        }
-
-        if (!items.length) {
-          toast('Nenhum corte pronto com arquivo de vídeo encontrado.');
-          btnLoteTodosCortes.disabled = false;
-          return;
-        }
-
-        if (!confirm(`Deseja iniciar a publicação em lote de ${items.length} corte(s) no YouTube com intervalo de ${inpInterval.value} minuto(s)?`)) {
-          btnLoteTodosCortes.disabled = false;
-          return;
-        }
-
-        try {
-          await apiSupo('/youtube-publisher/publish-batch', {
-            method: 'POST',
-            body: JSON.stringify({
-              items,
-              account_id: state.activeYtAccount || 'default',
-              interval_min: parseInt(inpInterval.value, 10) || 15,
-              visibility: 'public',
-            }),
-          });
-          toast(`Fila iniciada com ${items.length} cortes!`);
-          pollStatus(statusCard);
-        } catch (e) {
-          toast('Erro ao iniciar fila: ' + (e.message || e));
-        } finally {
-          btnLoteTodosCortes.disabled = false;
-        }
-      },
-    }, '🚀 Publicar Todos os Cortes Prontos no YouTube');
-
     body.append(
       h('div', { class: 'sc-card', style: 'margin-bottom:16px;' },
         h('div', { class: 'sc-card-head' },
           h('div', { class: 'sc-card-icon' }, '📋'),
           h('div', null,
-            h('div', { class: 'sc-card-title', text: 'Disparador de Publicação em Lote' }),
-            h('div', { class: 'sc-card-sub', text: 'Publique múltiplos cortes em sequência no YouTube com intervalo seguro anti-spam.' }),
+            h('div', { class: 'sc-card-title', text: 'Fila de Publicação do YouTube' }),
+            h('div', { class: 'sc-card-sub', text: 'Acompanhe em tempo real o envio dos vídeos para o YouTube Studio com logs detalhados.' }),
           ),
         ),
-        h('div', { style: 'display:flex; align-items:center; gap:12px; flex-wrap:wrap;' },
-          h('div', { style: 'display:flex; align-items:center; gap:8px;' },
-            h('label', { class: 'sc-label', style: 'margin:0;', text: 'Intervalo entre vídeos (min):' }),
-            inpInterval,
-          ),
-          btnLoteTodosCortes,
+        h('div', { style: 'font-size:13px; color:var(--text-muted); margin-bottom:12px;' },
+          'Os envios em lote ou avulsos são processados aqui com intervalo de segurança anti-spam.'
         ),
       ),
       statusCard,

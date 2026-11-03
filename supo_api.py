@@ -1256,3 +1256,55 @@ def supo_publish_batch_youtube(payload: dict[str, Any]) -> dict[str, Any]:
     _YT_PUB_THREAD.start()
 
     return {'ok': True, 'queued': len(items), 'account': account}
+
+
+@router.get('/youtube-publisher/library-clips')
+def supo_get_youtube_library_clips() -> dict[str, Any]:
+    """Retorna todos os cortes prontos de todos os projetos da biblioteca para o Publicador do YouTube."""
+    import api_ext
+    root = api_ext.projects_dir()
+    all_clips = []
+    
+    # Mapeia nomes reais dos projetos
+    try:
+        p_list = api_ext.list_projects()
+        projects_map = {p['id']: p.get('name') or p.get('title') for p in p_list if p.get('id')}
+    except Exception:
+        projects_map = {}
+
+    if root.is_dir():
+        for entry in sorted(root.iterdir(), key=lambda p: p.stat().st_mtime, reverse=True):
+            if not entry.is_dir():
+                continue
+            pid = entry.name
+            try:
+                state = api_ext._read_studio(pid)
+                jobs = {j['job_id']: j for j in state.get('jobs', []) if j.get('job_id')}
+                p_name = projects_map.get(pid) or state.get('project_name') or state.get('title') or (state.get('meta') or {}).get('title') or pid
+                clips = api_ext.project_clips(pid)
+                for c in clips:
+                    if c.get('status') == 'pronto' and c.get('has_video'):
+                        variant_id = c['id']
+                        variant = next((v for v in state.get('output_variants', []) if v.get('id') == variant_id), {})
+                        job = jobs.get(variant.get('render_job_id'))
+                        v_path = api_ext._video_path(pid, job)
+                        c_path = api_ext._cover_path(pid, job.get('job_id') if job else None, variant_id)
+
+                        all_clips.append({
+                            'project_id': pid,
+                            'project_name': p_name,
+                            'clip_id': variant_id,
+                            'title': c.get('title') or 'Corte Viral',
+                            'description': c.get('description') or '',
+                            'tags': c.get('tags') or [],
+                            'status': c.get('status'),
+                            'duration': c.get('duration'),
+                            'duration_label': c.get('duration_label') or '',
+                            'video_url': c.get('video_url'),
+                            'cover_url': c.get('cover_url'),
+                            'video_path': str(v_path) if v_path else '',
+                            'cover_path': str(c_path) if (c_path and c_path.is_file()) else '',
+                        })
+            except Exception:
+                continue
+    return {'ok': True, 'clips': all_clips, 'total': len(all_clips)}
