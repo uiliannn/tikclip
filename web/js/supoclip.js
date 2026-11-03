@@ -13,6 +13,9 @@ const state = {
   estudioTab: 'gerar',
   accounts: [],
   activeAccount: 'default',
+  ytAccounts: [],
+  activeYtAccount: 'default',
+  ytPubTab: 'shorts',
   projects: [],
   currentProjectId: null,
   currentClips: [],
@@ -168,6 +171,12 @@ function atualizarSidebarStatus() {
     chanCount.textContent = String(ativ);
     chanCount.style.display = ativ > 0 ? 'inline-flex' : 'none';
   }
+  const ytCount = document.getElementById('nav-yt-acc-count');
+  if (ytCount) {
+    const totalYt = (state.ytAccounts || []).length;
+    ytCount.textContent = String(totalYt);
+    ytCount.style.display = totalYt > 0 ? 'inline-flex' : 'none';
+  }
   const tiktokCount = document.getElementById('nav-tiktok-count');
   if (tiktokCount) {
     const totalVids = (state.tiktokCreators || []).reduce((acc, c) => acc + (c.video_count || 0), 0);
@@ -178,13 +187,14 @@ function atualizarSidebarStatus() {
 
 async function carregarEstadoInicial() {
   try {
-    const [st, proj, aiCfg, supoCfg, chanCfg, ttData] = await Promise.all([
+    const [st, proj, aiCfg, supoCfg, chanCfg, ttData, ytData] = await Promise.all([
       apiExt('/status').catch(() => ({ accounts: [] })),
       apiExt('/projects').catch(() => ({ items: [] })),
       apiSupo('/ai').catch(() => null),
       apiSupo('/settings').catch(() => null),
       apiSupo('/channels').catch(() => ({ channels: [], project_meta: {} })),
       apiSupo('/tiktok-downloads/creators').catch(() => ({ creators: [] })),
+      apiSupo('/youtube-publisher/accounts').catch(() => ({ accounts: [] })),
     ]);
     state.accounts = st.accounts || [];
     if (state.accounts.length && !state.accounts.some((a) => a.id === state.activeAccount)) {
@@ -199,6 +209,9 @@ async function carregarEstadoInicial() {
     }
     if (ttData && ttData.creators) {
       state.tiktokCreators = ttData.creators || [];
+    }
+    if (ytData && ytData.accounts) {
+      state.ytAccounts = ytData.accounts || [];
     }
     atualizarSidebarStatus();
   } catch (e) {
@@ -223,6 +236,7 @@ function navegar(novaView, pid = null) {
   else if (novaView === 'biblioteca') renderBiblioteca(main);
   else if (novaView === 'projeto') renderProjeto(main, state.currentProjectId);
   else if (novaView === 'publicador') renderPublicador(main);
+  else if (novaView === 'youtube_publisher') renderYouTubePublisher(main);
   else if (novaView === 'canais') renderCanais(main);
   else if (novaView === 'tiktok_downloads') renderTikTokDownloads(main);
   else if (novaView === 'estudio') renderEstudio(main);
@@ -1569,6 +1583,607 @@ async function renderPublicador(container) {
 /* ==========================================================================
    VIEW 4.5: CANAIS DO YOUTUBE & AUTOMAÇÃO DE CORTES
    ========================================================================== */
+
+/* ==========================================================================
+   VIEW: PUBLICADOR YOUTUBE STUDIO (SHORTS & VÍDEOS NORMAIS)
+   ========================================================================== */
+async function renderYouTubePublisher(container) {
+  await carregarEstadoInicial();
+
+  const wrap = h('div', { class: 'sc-page-narrow' });
+  wrap.append(
+    h('div', { class: 'sc-page-head' },
+      h('h1', { class: 'sc-page-title', text: 'Publicador YouTube Studio' }),
+      h('p', { class: 'sc-page-desc', text: 'Publique Shorts e Vídeos Normais (com capas em alta definição) diretamente em seus canais sem limites de API.' }),
+    ),
+  );
+
+  if (!state.ytPubTab) state.ytPubTab = 'shorts';
+
+  const tabs = [
+    ['shorts', '⚡ Publicar Shorts'],
+    ['normal', '🎥 Publicar Vídeo Normal'],
+    ['canais', '👥 Canais do YouTube'],
+    ['fila', '📋 Fila & Status ao Vivo'],
+  ];
+
+  const tabBar = h('div', { style: 'display:flex; gap:8px; margin-bottom:20px; flex-wrap:wrap;' });
+  for (const [id, label] of tabs) {
+    tabBar.append(
+      h('button', {
+        class: `sc-btn ${state.ytPubTab === id ? 'sc-btn-primary' : ''}`,
+        onclick: () => {
+          state.ytPubTab = id;
+          renderYouTubePublisher(container);
+        },
+      }, label),
+    );
+  }
+  wrap.append(tabBar);
+
+  const body = h('div');
+  wrap.append(body);
+  container.replaceChildren(wrap);
+
+  function renderSelectCanais() {
+    const sel = h('select', { class: 'sc-select', style: 'width:100%; max-width:320px;' });
+    if (!state.ytAccounts || !state.ytAccounts.length) {
+      sel.append(h('option', { value: 'default' }, 'Canal Principal (Padrão)'));
+    } else {
+      for (const acc of state.ytAccounts) {
+        sel.append(h('option', { value: acc.id, selected: acc.id === (state.activeYtAccount || 'default') }, `${acc.name} (${acc.id})`));
+      }
+    }
+    sel.onchange = (e) => {
+      state.activeYtAccount = e.target.value;
+    };
+    return sel;
+  }
+
+  let pollInterval = null;
+  async function pollStatus(targetBox) {
+    try {
+      const res = await apiSupo('/youtube-publisher/status');
+      if (!res) return;
+      renderStatusBox(targetBox, res);
+    } catch (_) {}
+  }
+
+  function renderStatusBox(targetBox, st) {
+    if (!targetBox) return;
+    const isRunning = st.running;
+    const logs = st.log || [];
+    const msg = st.message || 'Nenhuma publicação recente.';
+
+    const terminal = h('div', {
+      class: 'sc-log-terminal',
+      style: 'background:#0d1117; color:#58a6ff; font-family:Consolas, Monaco, monospace; font-size:12px; padding:12px; border-radius:8px; max-height:220px; overflow-y:auto; line-height:1.5; margin-top:12px; border:1px solid #30363d;',
+    }, ...logs.slice(-30).map((l) => {
+      const isSuccess = l.includes('✔') || l.includes('sucesso') || l.includes('concluído');
+      const isWarn = l.includes('aviso') || l.includes('falhou') || l.includes('erro') || l.includes('Erro');
+      const color = isSuccess ? '#3fb950' : (isWarn ? '#f85149' : '#c9d1d9');
+      return h('div', { style: `color:${color}; word-break:break-word;` }, l);
+    }));
+
+    setTimeout(() => { terminal.scrollTop = terminal.scrollHeight; }, 30);
+
+    targetBox.replaceChildren(
+      h('div', { style: 'display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; flex-wrap:wrap; gap:8px;' },
+        h('div', { style: 'display:flex; align-items:center; gap:8px;' },
+          h('span', { class: `sc-dot ${isRunning ? 'is-ok' : ''}` }),
+          h('span', { style: 'font-weight:600; font-size:13px;', text: isRunning ? `Publicando (${st.index}/${st.total}): ${msg}` : `Status: ${msg}` }),
+        ),
+        isRunning ? h('div', { style: 'display:flex; gap:6px;' },
+          h('button', {
+            class: 'sc-btn sc-btn-sm',
+            onclick: async () => {
+              await apiSupo('/youtube-publisher/skip-wait', { method: 'POST' });
+              toast('Pulando espera...');
+            },
+          }, '⏩ Pular Intervalo'),
+          h('button', {
+            class: 'sc-btn sc-btn-sm',
+            style: 'color:var(--danger-color);',
+            onclick: async () => {
+              await apiSupo('/youtube-publisher/stop', { method: 'POST' });
+              toast('Fila interrompida.');
+            },
+          }, '⏹ Parar'),
+        ) : null,
+      ),
+      terminal,
+    );
+  }
+
+  // ABA 1: SHORTS
+  if (state.ytPubTab === 'shorts') {
+    const inpVideo = h('input', { class: 'sc-input', placeholder: 'Caminho do arquivo .mp4 no computador (ex.: C:\\meu_video.mp4)' });
+    const inpTitle = h('input', { class: 'sc-input', maxlength: 100, placeholder: 'Título do Shorts (ex: Segredo da Produtividade #Shorts)' });
+    const txtDesc = h('textarea', { class: 'sc-input', rows: 3, placeholder: 'Descrição do Shorts, hashtags e links...', style: 'resize:vertical;' });
+    const inpTags = h('input', { class: 'sc-input', placeholder: 'shorts, viral, podcast, curiosidades' });
+    const selVis = h('select', { class: 'sc-select', style: 'max-width:200px;' },
+      h('option', { value: 'public' }, 'Público (Recomendado)'),
+      h('option', { value: 'unlisted' }, 'Não Listado'),
+      h('option', { value: 'private' }, 'Privado'),
+    );
+
+    const charCounter = h('span', { style: 'font-size:11px; color:var(--text-muted); margin-left:auto;' }, '0/100');
+    inpTitle.oninput = () => {
+      charCounter.textContent = `${inpTitle.value.length}/100`;
+    };
+
+    const drawerClips = h('div', { style: 'display:none; background:var(--bg-subtle); padding:12px; border-radius:8px; margin-bottom:14px; border:1px solid var(--border-color);' });
+    const btnAbrirBiblioteca = h('button', {
+      class: 'sc-btn sc-btn-sm',
+      style: 'margin-right:8px;',
+      onclick: async () => {
+        if (drawerClips.style.display !== 'none') {
+          drawerClips.style.display = 'none';
+          return;
+        }
+        drawerClips.replaceChildren(h('div', { style: 'font-size:12px; color:var(--text-muted);' }, 'Buscando cortes prontos...'));
+        drawerClips.style.display = 'block';
+
+        const listaCortes = [];
+        for (const p of state.projects) {
+          try {
+            const clips = await apiExt(`/projects/${p.id}/clips`);
+            for (const c of clips) {
+              if (c.status === 'pronto' && c.has_video) {
+                listaCortes.push({ proj: p, clip: c });
+              }
+            }
+          } catch (_) {}
+        }
+
+        if (!listaCortes.length) {
+          drawerClips.replaceChildren(h('div', { style: 'font-size:12px; color:var(--text-muted);' }, 'Nenhum corte pronto encontrado nos projetos. Crie um corte primeiro na aba Criar!'));
+          return;
+        }
+
+        const grid = h('div', { style: 'display:grid; grid-template-columns:repeat(auto-fill, minmax(200px, 1fr)); gap:10px; max-height:240px; overflow-y:auto; margin-top:8px;' });
+        for (const item of listaCortes) {
+          grid.append(
+            h('div', {
+              class: 'sc-card',
+              style: 'padding:8px; cursor:pointer; border:1px solid var(--border-color); transition:all 0.15s ease;',
+              onclick: () => {
+                inpTitle.value = item.clip.title || 'Corte Viral';
+                charCounter.textContent = `${inpTitle.value.length}/100`;
+                txtDesc.value = item.clip.description || '';
+                inpTags.value = item.clip.tags || 'shorts, viral';
+                inpVideo.value = `[Projeto] ${item.proj.id} - ${item.clip.id}`;
+                inpVideo.dataset.projectId = item.proj.id;
+                inpVideo.dataset.variantId = item.clip.id;
+                drawerClips.style.display = 'none';
+                toast(`Corte "${item.clip.title}" selecionado para envio!`);
+              },
+            },
+              h('div', { style: 'font-weight:600; font-size:12px; margin-bottom:4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;', text: item.clip.title || 'Corte' }),
+              h('div', { style: 'font-size:11px; color:var(--text-muted);' }, `Projeto: ${item.proj.name || item.proj.id}`),
+            ),
+          );
+        }
+        drawerClips.replaceChildren(
+          h('div', { style: 'font-weight:600; font-size:12px; color:var(--text-main); margin-bottom:4px;' }, 'Clique em um corte pronto para preencher automaticamente:'),
+          grid,
+        );
+      },
+    }, '📚 Escolher da Biblioteca de Cortes');
+
+    const statusCard = h('div', { class: 'sc-card', style: 'margin-top:16px;' });
+
+    const btnEnviarShorts = h('button', {
+      class: 'sc-btn sc-btn-primary',
+      style: 'font-size:14px; padding:10px 20px;',
+      onclick: async () => {
+        const valVideo = inpVideo.value.trim();
+        if (!valVideo) {
+          toast('Por favor, informe o caminho do vídeo ou selecione da biblioteca.');
+          return;
+        }
+        const pid = inpVideo.dataset.projectId;
+        const vid = inpVideo.dataset.variantId;
+        const payload = {
+          account_id: state.activeYtAccount || 'default',
+          title: inpTitle.value.trim(),
+          description: txtDesc.value.trim(),
+          tags: inpTags.value.trim(),
+          visibility: selVis.value,
+          is_short: true,
+        };
+        if (pid && vid && valVideo.startsWith('[Projeto]')) {
+          payload.project_id = pid;
+          payload.variant_id = vid;
+        } else {
+          payload.video_path = valVideo;
+        }
+
+        try {
+          btnEnviarShorts.disabled = true;
+          toast('Iniciando envio do Shorts no YouTube Studio...');
+          await apiSupo('/youtube-publisher/publish-single', { method: 'POST', body: JSON.stringify(payload) });
+          toast('Processo iniciado! Acompanhe os logs abaixo.');
+          pollStatus(statusCard);
+        } catch (e) {
+          toast('Erro: ' + (e.message || e));
+        } finally {
+          btnEnviarShorts.disabled = false;
+        }
+      },
+    }, '🚀 Publicar Shorts no YouTube Agora');
+
+    body.append(
+      h('div', { class: 'sc-card' },
+        h('div', { class: 'sc-card-head' },
+          h('div', { class: 'sc-card-icon' }, '⚡'),
+          h('div', null,
+            h('div', { class: 'sc-card-title', text: 'Enviar YouTube Shorts' }),
+            h('div', { class: 'sc-card-sub', text: 'Vídeos verticais (9:16) com tag #Shorts automática, público-alvo configurado e postagem direta.' }),
+          ),
+        ),
+        h('div', { style: 'display:flex; flex-direction:column; gap:14px;' },
+          h('div', null,
+            h('label', { class: 'sc-label', text: 'Canal do YouTube de Destino:' }),
+            renderSelectCanais(),
+          ),
+          h('div', null,
+            h('div', { style: 'display:flex; align-items:center; justify-content:space-between; margin-bottom:6px;' },
+              h('label', { class: 'sc-label', style: 'margin:0;', text: 'Arquivo de Vídeo (.mp4):' }),
+              btnAbrirBiblioteca,
+            ),
+            drawerClips,
+            inpVideo,
+          ),
+          h('div', null,
+            h('div', { style: 'display:flex; align-items:center; justify-content:space-between; margin-bottom:4px;' },
+              h('label', { class: 'sc-label', style: 'margin:0;', text: 'Título do Shorts:' }),
+              charCounter,
+            ),
+            inpTitle,
+          ),
+          h('div', null,
+            h('label', { class: 'sc-label', text: 'Descrição e Créditos:' }),
+            txtDesc,
+          ),
+          h('div', null,
+            h('label', { class: 'sc-label', text: 'Tags / Palavras-chave (separadas por vírgula):' }),
+            inpTags,
+          ),
+          h('div', null,
+            h('label', { class: 'sc-label', text: 'Visibilidade:' }),
+            selVis,
+          ),
+          h('div', { style: 'margin-top:10px;' },
+            btnEnviarShorts,
+          ),
+        ),
+      ),
+      statusCard,
+    );
+
+    pollStatus(statusCard);
+    pollInterval = setInterval(() => pollStatus(statusCard), 2500);
+  }
+
+  // ABA 2: VÍDEO NORMAL
+  else if (state.ytPubTab === 'normal') {
+    const inpVideo = h('input', { class: 'sc-input', placeholder: 'Caminho do arquivo .mp4 no computador (ex.: C:\\meu_video_longo.mp4)' });
+    const inpTitle = h('input', { class: 'sc-input', maxlength: 100, placeholder: 'Título do vídeo (até 100 caracteres)' });
+    const txtDesc = h('textarea', { class: 'sc-input', rows: 4, placeholder: 'Descrição completa do vídeo, tópicos, links...', style: 'resize:vertical;' });
+    const inpCover = h('input', { class: 'sc-input', placeholder: 'Caminho da imagem de capa / thumbnail (.jpg, .png)' });
+    const inpTags = h('input', { class: 'sc-input', placeholder: 'palavra-chave 1, palavra-chave 2, podcast, entrevista' });
+    const selVis = h('select', { class: 'sc-select', style: 'max-width:200px;' },
+      h('option', { value: 'public' }, 'Público (Recomendado)'),
+      h('option', { value: 'unlisted' }, 'Não Listado'),
+      h('option', { value: 'private' }, 'Privado'),
+    );
+
+    const charCounter = h('span', { style: 'font-size:11px; color:var(--text-muted); margin-left:auto;' }, '0/100');
+    inpTitle.oninput = () => {
+      charCounter.textContent = `${inpTitle.value.length}/100`;
+    };
+
+    const btnExtrairCapa = h('button', {
+      class: 'sc-btn sc-btn-sm',
+      style: 'margin-left:8px;',
+      onclick: async () => {
+        const vPath = inpVideo.value.trim();
+        if (!vPath) {
+          toast('Informe o caminho do vídeo primeiro para extrair a capa.');
+          return;
+        }
+        try {
+          toast('Extraindo frame em alta qualidade com FFmpeg...');
+          const res = await apiSupo('/youtube-publisher/extract-cover', {
+            method: 'POST',
+            body: JSON.stringify({ video_path: vPath, second: 1.5 }),
+          });
+          if (res && res.cover_path) {
+            inpCover.value = res.cover_path;
+            toast('Capa extraída com sucesso ✔');
+          }
+        } catch (e) {
+          toast('Erro ao extrair capa: ' + (e.message || e));
+        }
+      },
+    }, '📸 Extrair Capa com FFmpeg');
+
+    const statusCard = h('div', { class: 'sc-card', style: 'margin-top:16px;' });
+
+    const btnEnviarNormal = h('button', {
+      class: 'sc-btn sc-btn-primary',
+      style: 'font-size:14px; padding:10px 20px;',
+      onclick: async () => {
+        const vPath = inpVideo.value.trim();
+        if (!vPath) {
+          toast('Informe o caminho do vídeo.');
+          return;
+        }
+        const payload = {
+          account_id: state.activeYtAccount || 'default',
+          video_path: vPath,
+          title: inpTitle.value.trim(),
+          description: txtDesc.value.trim(),
+          tags: inpTags.value.trim(),
+          thumbnail_path: inpCover.value.trim() || null,
+          visibility: selVis.value,
+          is_short: false,
+        };
+
+        try {
+          btnEnviarNormal.disabled = true;
+          toast('Iniciando envio no YouTube Studio...');
+          await apiSupo('/youtube-publisher/publish-single', { method: 'POST', body: JSON.stringify(payload) });
+          toast('Processo iniciado! Acompanhe os logs abaixo.');
+          pollStatus(statusCard);
+        } catch (e) {
+          toast('Erro: ' + (e.message || e));
+        } finally {
+          btnEnviarNormal.disabled = false;
+        }
+      },
+    }, '🚀 Publicar Vídeo no YouTube Agora');
+
+    body.append(
+      h('div', { class: 'sc-card' },
+        h('div', { class: 'sc-card-head' },
+          h('div', { class: 'sc-card-icon' }, '🎥'),
+          h('div', null,
+            h('div', { class: 'sc-card-title', text: 'Enviar Vídeo Normal / Longo' }),
+            h('div', { class: 'sc-card-sub', text: 'Upload completo com miniatura personalizada (thumbnail), descrição formatada e metadados no YouTube Studio.' }),
+          ),
+        ),
+        h('div', { style: 'display:flex; flex-direction:column; gap:14px;' },
+          h('div', null,
+            h('label', { class: 'sc-label', text: 'Canal do YouTube de Destino:' }),
+            renderSelectCanais(),
+          ),
+          h('div', null,
+            h('label', { class: 'sc-label', text: 'Arquivo de Vídeo (.mp4, .mkv, .mov):' }),
+            inpVideo,
+          ),
+          h('div', null,
+            h('div', { style: 'display:flex; align-items:center; justify-content:space-between; margin-bottom:4px;' },
+              h('label', { class: 'sc-label', style: 'margin:0;', text: 'Título do Vídeo:' }),
+              charCounter,
+            ),
+            inpTitle,
+          ),
+          h('div', null,
+            h('label', { class: 'sc-label', text: 'Descrição Completa:' }),
+            txtDesc,
+          ),
+          h('div', null,
+            h('div', { style: 'display:flex; align-items:center; margin-bottom:4px;' },
+              h('label', { class: 'sc-label', style: 'margin:0;', text: 'Miniatura / Capa Personalizada (.jpg, .png):' }),
+              btnExtrairCapa,
+            ),
+            inpCover,
+          ),
+          h('div', null,
+            h('label', { class: 'sc-label', text: 'Tags / Palavras-chave:' }),
+            inpTags,
+          ),
+          h('div', null,
+            h('label', { class: 'sc-label', text: 'Visibilidade:' }),
+            selVis,
+          ),
+          h('div', { style: 'margin-top:10px;' },
+            btnEnviarNormal,
+          ),
+        ),
+      ),
+      statusCard,
+    );
+
+    pollStatus(statusCard);
+    pollInterval = setInterval(() => pollStatus(statusCard), 2500);
+  }
+
+  // ABA 3: CANAIS DO YOUTUBE
+  else if (state.ytPubTab === 'canais') {
+    const accList = h('div', { style: 'display:flex; flex-direction:column; gap:10px; margin-bottom:16px;' });
+    for (const acc of (state.ytAccounts || [])) {
+      const isAtiva = acc.id === (state.activeYtAccount || 'default');
+      accList.append(
+        h('div', {
+          class: `sc-ai-provider-box ${isAtiva ? 'is-active-box' : ''}`,
+          style: 'display:flex; align-items:center; justify-content:space-between; margin:0;',
+        },
+          h('div', { style: 'display:flex; align-items:center; gap:12px;' },
+            h('span', { class: 'sc-dot is-ok' }),
+            h('div', null,
+              h('div', { style: 'font-weight:700; font-size:14px;', text: `${acc.name} (${acc.id})` }),
+              h('div', { style: 'font-size:12px; color:var(--text-muted);', text: 'Perfil de sessão persistente em %APPDATA%\\TikClip' }),
+            ),
+          ),
+          h('div', { style: 'display:flex; gap:8px;' },
+            isAtiva
+              ? h('span', { class: 'sc-ai-pill-active', text: 'Canal Ativo' })
+              : h('button', {
+                  class: 'sc-btn sc-btn-sm',
+                  onclick: () => {
+                    state.activeYtAccount = acc.id;
+                    renderYouTubePublisher(container);
+                    toast(`Canal ativo alterado para ${acc.name}`);
+                  },
+                }, 'Usar este canal'),
+            h('button', {
+              class: 'sc-btn sc-btn-sm',
+              onclick: async () => {
+                try {
+                  toast('Abrindo YouTube Studio no navegador para conferência ou login...');
+                  await apiSupo(`/youtube-publisher/accounts/${acc.id}/connect`, { method: 'POST' });
+                } catch (e) {
+                  toast('Aviso: ' + (e.message || e));
+                }
+              },
+            }, 'Abrir / Conectar Canal'),
+            acc.id !== 'default' ? h('button', {
+              class: 'sc-btn sc-btn-sm',
+              style: 'color:var(--danger-color);',
+              onclick: async () => {
+                if (!confirm(`Deseja remover o canal "${acc.name}"?`)) return;
+                try {
+                  await apiSupo(`/youtube-publisher/accounts/${acc.id}`, { method: 'DELETE' });
+                  toast('Canal removido.');
+                  renderYouTubePublisher(container);
+                } catch (e) {
+                  toast('Erro: ' + (e.message || e));
+                }
+              },
+            }, 'Excluir') : null,
+          ),
+        ),
+      );
+    }
+
+    const inpNovoCanal = h('input', { class: 'sc-input', placeholder: 'Nome do novo canal (ex.: Cortes do Podcast)', style: 'max-width:280px;' });
+    body.append(
+      h('div', { class: 'sc-card' },
+        h('div', { class: 'sc-card-head' },
+          h('div', { class: 'sc-card-icon' }, '👥'),
+          h('div', null,
+            h('div', { class: 'sc-card-title', text: 'Canais do YouTube Cadastrados' }),
+            h('div', { class: 'sc-card-sub', text: 'Cada canal opera em um perfil de navegador isolado, permitindo gerenciar vários canais sem misturar logins.' }),
+          ),
+        ),
+        accList,
+        h('div', { style: 'display:flex; gap:8px; margin-top:12px;' },
+          inpNovoCanal,
+          h('button', {
+            class: 'sc-btn sc-btn-primary',
+            onclick: async () => {
+              const nome = inpNovoCanal.value.trim();
+              if (!nome) return;
+              try {
+                await apiSupo('/youtube-publisher/accounts', { method: 'POST', body: JSON.stringify({ name: nome }) });
+                toast('Novo canal cadastrado com sucesso!');
+                renderYouTubePublisher(container);
+              } catch (e) {
+                toast('Erro: ' + (e.message || e));
+              }
+            },
+          }, '+ Adicionar Canal'),
+        ),
+      ),
+    );
+  }
+
+  // ABA 4: FILA & STATUS EM TEMPO REAL
+  else if (state.ytPubTab === 'fila') {
+    const statusCard = h('div', { class: 'sc-card' });
+    const inpInterval = h('input', { class: 'sc-input', type: 'number', min: 1, value: 15, style: 'max-width:100px;' });
+
+    const btnLoteTodosCortes = h('button', {
+      class: 'sc-btn sc-btn-primary',
+      onclick: async () => {
+        btnLoteTodosCortes.disabled = true;
+        toast('Buscando todos os cortes prontos nos projetos...');
+        const items = [];
+        for (const p of state.projects) {
+          try {
+            const clips = await apiExt(`/projects/${p.id}/clips`);
+            for (const c of clips) {
+              if (c.status === 'pronto' && c.has_video) {
+                const st = await apiExt(`/projects/${p.id}`);
+                const jobs = (st.jobs || []).reduce((acc, j) => { acc[j.job_id] = j; return acc; }, {});
+                const variant = (st.output_variants || []).find((v) => v.id === c.id) || {};
+                const job = jobs[variant.render_job_id];
+                if (job && job.output_files && job.output_files.length) {
+                  items.push({
+                    video_path: job.output_files[0],
+                    title: c.title || 'Corte TikClip #Shorts',
+                    description: c.description || '',
+                    tags: c.tags || 'shorts, viral',
+                    is_short: true,
+                  });
+                }
+              }
+            }
+          } catch (_) {}
+        }
+
+        if (!items.length) {
+          toast('Nenhum corte pronto com arquivo de vídeo encontrado.');
+          btnLoteTodosCortes.disabled = false;
+          return;
+        }
+
+        if (!confirm(`Deseja iniciar a publicação em lote de ${items.length} corte(s) no YouTube com intervalo de ${inpInterval.value} minuto(s)?`)) {
+          btnLoteTodosCortes.disabled = false;
+          return;
+        }
+
+        try {
+          await apiSupo('/youtube-publisher/publish-batch', {
+            method: 'POST',
+            body: JSON.stringify({
+              items,
+              account_id: state.activeYtAccount || 'default',
+              interval_min: parseInt(inpInterval.value, 10) || 15,
+              visibility: 'public',
+            }),
+          });
+          toast(`Fila iniciada com ${items.length} cortes!`);
+          pollStatus(statusCard);
+        } catch (e) {
+          toast('Erro ao iniciar fila: ' + (e.message || e));
+        } finally {
+          btnLoteTodosCortes.disabled = false;
+        }
+      },
+    }, '🚀 Publicar Todos os Cortes Prontos no YouTube');
+
+    body.append(
+      h('div', { class: 'sc-card', style: 'margin-bottom:16px;' },
+        h('div', { class: 'sc-card-head' },
+          h('div', { class: 'sc-card-icon' }, '📋'),
+          h('div', null,
+            h('div', { class: 'sc-card-title', text: 'Disparador de Publicação em Lote' }),
+            h('div', { class: 'sc-card-sub', text: 'Publique múltiplos cortes em sequência no YouTube com intervalo seguro anti-spam.' }),
+          ),
+        ),
+        h('div', { style: 'display:flex; align-items:center; gap:12px; flex-wrap:wrap;' },
+          h('div', { style: 'display:flex; align-items:center; gap:8px;' },
+            h('label', { class: 'sc-label', style: 'margin:0;', text: 'Intervalo entre vídeos (min):' }),
+            inpInterval,
+          ),
+          btnLoteTodosCortes,
+        ),
+      ),
+      statusCard,
+    );
+
+    pollStatus(statusCard);
+    pollInterval = setInterval(() => pollStatus(statusCard), 2500);
+  }
+
+  registerTimer(pollInterval);
+}
+
+
 async function renderCanais(container) {
   container.replaceChildren();
 

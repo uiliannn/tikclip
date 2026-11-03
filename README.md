@@ -67,6 +67,7 @@ Chave seletora em tempo real para alternar entre a API do **Google Gemini** (Gem
 - **Legendas Dinâmicas Estilo TikTok/Reels:** Sincronizadas palavra por palavra (*word-level timing*) geradas localmente com Whisper.
 - **Monitoramento Passivo de Canais:** Verificação contínua de canais do YouTube; novos lançamentos são baixados e cortados sem intervenção manual.
 - **Isolamento Rígido de Contas do TikTok:** Cada canal monitorado pode ser associado a uma conta específica, garantindo que nenhum vídeo seja postado no perfil errado.
+- **Publicador YouTube Studio Multi-Canais:** Automação local gratuita via navegador para postar **YouTube Shorts** (verticais com #Shorts automático) e **Vídeos Normais/Longos** (com envio ou extração de miniatura/capa personalizada com FFmpeg, metadados e controle de visibilidade).
 - **Extração Inteligente de Capas:** O gerador de thumbnails extrai frames nítidos via FFmpeg para garantir capas de alta qualidade no TikTok Studio.
 - **Automação via MCP e API REST:** API OpenAPI interativa e servidor MCP integrado para orquestração por LLMs autônomos.
 

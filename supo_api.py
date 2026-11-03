@@ -12,6 +12,10 @@ import json
 import os
 import secrets
 import time
+import threading
+import logging
+
+logger = logging.getLogger('tikclip.supo_api')
 from pathlib import Path
 from typing import Any
 
@@ -948,3 +952,307 @@ def supo_publish_batch_tiktok_videos(payload: dict[str, Any]) -> dict[str, Any]:
         raise HTTPException(status_code=500, detail=str(exc))
 
 
+
+
+# --------------------------------------------------------------------------- #
+# Publicador do YouTube (Shorts & Vídeos Normais)
+# --------------------------------------------------------------------------- #
+
+_YT_PUB_LOCK = threading.RLock()
+_YT_PUB: dict[str, Any] = {
+    'running': False,
+    'stop': False,
+    'skip_wait': False,
+    'index': 0,
+    'total': 0,
+    'message': 'Nenhuma publicação do YouTube em andamento.',
+    'log': [],
+    'account': 'default',
+    'current_title': '',
+}
+_YT_PUB_THREAD: threading.Thread | None = None
+
+
+def _yt_pub_log(msg: str) -> None:
+    stamp = time.strftime('%H:%M:%S')
+    with _YT_PUB_LOCK:
+        _YT_PUB['message'] = msg
+        _YT_PUB['log'].append(f'{stamp}  {msg}')
+        if len(_YT_PUB['log']) > 400:
+            del _YT_PUB['log'][:100]
+    logger.info('[YouTube Pub] %s', msg)
+
+
+@router.get('/youtube-publisher/accounts')
+def supo_get_youtube_accounts() -> dict[str, Any]:
+    """Retorna a lista de contas/canais do YouTube cadastrados."""
+    try:
+        import youtube_local_publisher as ytl
+        accs = ytl.list_accounts()
+        return {'ok': True, 'accounts': accs}
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.post('/youtube-publisher/accounts')
+def supo_add_youtube_account(payload: dict[str, Any]) -> dict[str, Any]:
+    """Cadastra um novo canal/conta do YouTube."""
+    name = (payload.get('name') or '').strip()
+    if not name:
+        raise HTTPException(status_code=400, detail='O nome do canal é obrigatório.')
+    try:
+        import youtube_local_publisher as ytl
+        new_acc = ytl.add_account(name)
+        return {'ok': True, 'account': new_acc}
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.delete('/youtube-publisher/accounts/{account_id}')
+def supo_remove_youtube_account(account_id: str) -> dict[str, Any]:
+    """Remove uma conta do YouTube (exceto o Canal Principal)."""
+    try:
+        import youtube_local_publisher as ytl
+        ok = ytl.remove_account(account_id)
+        if not ok:
+            raise HTTPException(status_code=404, detail='Canal não encontrado.')
+        return {'ok': True, 'account_id': account_id}
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.post('/youtube-publisher/accounts/{account_id}/connect')
+def supo_connect_youtube_account(account_id: str) -> dict[str, Any]:
+    """Abre uma janela de navegador persistente para fazer/verificar login no YouTube Studio."""
+    import youtube_local_publisher as ytl
+    t = threading.Thread(
+        target=ytl.login_session,
+        kwargs={'account': account_id, 'progress': _yt_pub_log},
+        daemon=True,
+    )
+    t.start()
+    return {'ok': True, 'message': 'Navegador aberto para login no YouTube Studio.', 'account_id': account_id}
+
+
+@router.get('/youtube-publisher/status')
+def supo_get_youtube_publisher_status() -> dict[str, Any]:
+    """Retorna o estado e logs da publicação do YouTube em tempo real."""
+    with _YT_PUB_LOCK:
+        return dict(_YT_PUB)
+
+
+@router.post('/youtube-publisher/stop')
+def supo_stop_youtube_publisher() -> dict[str, Any]:
+    """Interrompe a publicação atual do YouTube."""
+    with _YT_PUB_LOCK:
+        _YT_PUB['stop'] = True
+    _yt_pub_log('Solicitação de parada recebida pelo usuário.')
+    return {'ok': True}
+
+
+@router.post('/youtube-publisher/skip-wait')
+def supo_skip_wait_youtube_publisher() -> dict[str, Any]:
+    """Pula o intervalo de espera para o próximo vídeo do lote."""
+    with _YT_PUB_LOCK:
+        _YT_PUB['skip_wait'] = True
+    _yt_pub_log('Intervalo pulado! Avançando imediatamente...')
+    return {'ok': True}
+
+
+@router.post('/youtube-publisher/extract-cover')
+def supo_extract_youtube_cover(payload: dict[str, Any]) -> dict[str, Any]:
+    """Extrai uma capa/thumbnail de alta qualidade de um vídeo local para o YouTube."""
+    video_path_str = payload.get('video_path')
+    second = float(payload.get('second', 1.5))
+    if not video_path_str:
+        raise HTTPException(status_code=400, detail='video_path é obrigatório.')
+
+    v_path = Path(video_path_str)
+    if not v_path.is_file():
+        raise HTTPException(status_code=404, detail='Arquivo de vídeo não encontrado.')
+
+    try:
+        import tiktok_library
+        cover_file = tiktok_library.extract_video_cover(v_path, second=second)
+        if not cover_file:
+            raise HTTPException(status_code=500, detail='Falha ao extrair capa com FFmpeg.')
+        return {'ok': True, 'cover_path': str(cover_file), 'cover_name': cover_file.name}
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.post('/youtube-publisher/publish-single')
+def supo_publish_single_youtube(payload: dict[str, Any]) -> dict[str, Any]:
+    """Publica um único vídeo (Shorts ou Normal) no YouTube Studio."""
+    global _YT_PUB_THREAD
+
+    video_path_str = payload.get('video_path')
+    project_id = payload.get('project_id')
+    variant_id = payload.get('variant_id')
+
+    title = payload.get('title') or ''
+    description = payload.get('description') or ''
+    tags = payload.get('tags') or ''
+    thumbnail_path_str = payload.get('thumbnail_path')
+    visibility = payload.get('visibility') or 'public'
+    is_short = bool(payload.get('is_short', False))
+    account = payload.get('account_id') or 'default'
+
+    if (not video_path_str) and project_id and variant_id:
+        import api_ext
+        state = api_ext._read_studio(project_id)
+        jobs = {j['job_id']: j for j in state.get('jobs', []) if j.get('job_id')}
+        variant = next((v for v in state.get('output_variants', []) if v.get('id') == variant_id), {})
+        job = jobs.get(variant.get('render_job_id'))
+        v_path_resolved = api_ext._video_path(project_id, job)
+        if v_path_resolved:
+            video_path_str = str(v_path_resolved)
+        if not title:
+            title = variant.get('title') or 'Corte TikClip'
+        if not description:
+            description = variant.get('description') or ''
+        if not tags:
+            tags = variant.get('tags') or ''
+        if not thumbnail_path_str:
+            c_path = api_ext._cover_path(project_id, job.get('job_id') if job else None, variant_id)
+            if c_path and c_path.is_file():
+                thumbnail_path_str = str(c_path)
+
+    if not video_path_str or not Path(video_path_str).is_file():
+        raise HTTPException(status_code=400, detail='Arquivo de vídeo não encontrado para publicação.')
+
+    with _YT_PUB_LOCK:
+        if _YT_PUB.get('running') and _YT_PUB_THREAD and _YT_PUB_THREAD.is_alive():
+            raise HTTPException(status_code=409, detail='Já existe uma publicação em andamento no YouTube.')
+        _YT_PUB.update(
+            running=True,
+            stop=False,
+            skip_wait=False,
+            index=1,
+            total=1,
+            message=f'Enviando "{title or Path(video_path_str).stem}" para o YouTube...',
+            account=account,
+            current_title=title,
+        )
+
+    def _worker():
+        import youtube_local_publisher as ytl
+        try:
+            _yt_pub_log(f'Iniciando envio no YouTube ({"Shorts" if is_short else "Normal"}) para conta "{account}"')
+            res = ytl.publish_video(
+                video_path=video_path_str,
+                title=title,
+                description=description,
+                tags=tags,
+                thumbnail_path=thumbnail_path_str,
+                visibility=visibility,
+                is_short=is_short,
+                account=account,
+                progress=_yt_pub_log,
+            )
+            _yt_pub_log(f'Finalizado com sucesso: {res.get("video_url") or "Vídeo publicado!"}')
+        except Exception as exc:
+            _yt_pub_log(f'Erro na publicação do YouTube: {exc}')
+        finally:
+            with _YT_PUB_LOCK:
+                _YT_PUB['running'] = False
+
+    _YT_PUB_THREAD = threading.Thread(target=_worker, daemon=True)
+    _YT_PUB_THREAD.start()
+
+    return {'ok': True, 'message': 'Publicação iniciada no YouTube Studio.', 'account': account}
+
+
+@router.post('/youtube-publisher/publish-batch')
+def supo_publish_batch_youtube(payload: dict[str, Any]) -> dict[str, Any]:
+    """Inicia a publicação em lote de vários Shorts ou vídeos no YouTube Studio."""
+    global _YT_PUB_THREAD
+
+    items = payload.get('items') or []
+    account = payload.get('account_id') or 'default'
+    interval_min = int(payload.get('interval_min') or 15)
+    visibility = payload.get('visibility') or 'public'
+
+    if not items:
+        raise HTTPException(status_code=400, detail='Nenhum vídeo selecionado para a fila do YouTube.')
+
+    with _YT_PUB_LOCK:
+        if _YT_PUB.get('running') and _YT_PUB_THREAD and _YT_PUB_THREAD.is_alive():
+            raise HTTPException(status_code=409, detail='Já existe uma publicação em andamento no YouTube.')
+        _YT_PUB.update(
+            running=True,
+            stop=False,
+            skip_wait=False,
+            index=0,
+            total=len(items),
+            message=f'Fila do YouTube iniciada ({len(items)} vídeos)...',
+            account=account,
+            log=[],
+        )
+
+    def _batch_worker():
+        import youtube_local_publisher as ytl
+        total = len(items)
+        _yt_pub_log(f'=== Iniciando fila em lote do YouTube: {total} vídeo(s) na conta "{account}" ===')
+        _yt_pub_log(f'Intervalo configurado entre publicações: {interval_min} minuto(s)')
+
+        for idx, it in enumerate(items, start=1):
+            with _YT_PUB_LOCK:
+                if _YT_PUB.get('stop'):
+                    _yt_pub_log('Fila cancelada pelo usuário.')
+                    break
+                _YT_PUB['index'] = idx
+                _YT_PUB['current_title'] = it.get('title') or 'Vídeo'
+                _YT_PUB['skip_wait'] = False
+
+            v_path = it.get('video_path')
+            if not v_path or not Path(v_path).is_file():
+                _yt_pub_log(f'[{idx}/{total}] Vídeo não encontrado no caminho: {v_path}')
+                continue
+
+            title = it.get('title') or Path(v_path).stem
+            is_short = bool(it.get('is_short', False))
+            _yt_pub_log(f'[{idx}/{total}] Preparando "{title}" ({"Shorts" if is_short else "Normal"})...')
+
+            try:
+                res = ytl.publish_video(
+                    video_path=v_path,
+                    title=title,
+                    description=it.get('description') or '',
+                    tags=it.get('tags') or '',
+                    thumbnail_path=it.get('thumbnail_path'),
+                    visibility=visibility,
+                    is_short=is_short,
+                    account=account,
+                    progress=lambda m: _yt_pub_log(f'[{idx}/{total}] {m}'),
+                )
+                _yt_pub_log(f'[{idx}/{total}] Publicado com sucesso no YouTube ✔ {res.get("video_url") or ""}')
+            except Exception as exc:
+                _yt_pub_log(f'[{idx}/{total}] Falha ao publicar: {exc}')
+
+            if idx < total:
+                _yt_pub_log(f'Aguardando intervalo de {interval_min} min antes do próximo vídeo...')
+                segundos = interval_min * 60
+                passo = 2
+                while segundos > 0:
+                    with _YT_PUB_LOCK:
+                        if _YT_PUB.get('stop'):
+                            break
+                        if _YT_PUB.get('skip_wait'):
+                            _yt_pub_log('Intervalo pulado! Iniciando próximo imediatamente...')
+                            break
+                    time.sleep(passo)
+                    segundos -= passo
+
+        with _YT_PUB_LOCK:
+            _YT_PUB['running'] = False
+        _yt_pub_log('=== Fila do YouTube finalizada ===')
+
+    _YT_PUB_THREAD = threading.Thread(target=_batch_worker, daemon=True)
+    _YT_PUB_THREAD.start()
+
+    return {'ok': True, 'queued': len(items), 'account': account}
