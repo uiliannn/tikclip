@@ -51,6 +51,7 @@ const state = {
   progressTimer: null,
   publishTimer: null,
   estudioTimer: null,
+  ytPubTimer: null,
   publishInterval: 30,
   tiktokCreators: [],
   selectedTikTokCreator: null,
@@ -140,6 +141,7 @@ function limparTimers() {
   if (state.progressTimer) { clearInterval(state.progressTimer); state.progressTimer = null; }
   if (state.publishTimer) { clearInterval(state.publishTimer); state.publishTimer = null; }
   if (state.estudioTimer) { clearInterval(state.estudioTimer); state.estudioTimer = null; }
+  if (state.ytPubTimer) { clearInterval(state.ytPubTimer); state.ytPubTimer = null; }
 }
 
 /* --------------------------------------------------------- Tema & Barra --- */
@@ -153,10 +155,12 @@ function aplicarTema(tema) {
 function atualizarSidebarStatus() {
   const aiLabel = document.getElementById('sidebar-ai-label');
   if (aiLabel) {
-    const isGem = state.ai.active_provider === 'gemini';
+    const isGem = state.ai && state.ai.active_provider === 'gemini';
+    const gemModel = (state.ai && state.ai.gemini && state.ai.gemini.model) || '2.5-flash';
+    const dsModel = (state.ai && state.ai.deepseek && state.ai.deepseek.model) || 'chat';
     aiLabel.textContent = isGem
-      ? `IA: Google Gemini (${state.ai.gemini.model || '2.5-flash'})`
-      : `IA: DeepSeek (${state.ai.deepseek.model || 'chat'})`;
+      ? `IA: Google Gemini (${gemModel})`
+      : `IA: DeepSeek (${dsModel})`;
   }
   const ttLabel = document.getElementById('sidebar-tt-label');
   const accCount = document.getElementById('nav-acc-count');
@@ -2180,7 +2184,8 @@ async function renderYouTubePublisher(container) {
     pollInterval = setInterval(() => pollStatus(statusCard), 2500);
   }
 
-  registerTimer(pollInterval);
+  if (state.ytPubTimer) clearInterval(state.ytPubTimer);
+  state.ytPubTimer = pollInterval;
 }
 
 
