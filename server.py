@@ -1,19 +1,14 @@
 """Servidor Web do TikClip (Edição SupoClip).
 
-Projeto completo para geração inteligente de cortes, monitoramento autônomo
-de canais do YouTube e publicação automatizada no TikTok Studio.
-
-Suporta:
-- Dual AI: Google Gemini (2.5/3.5) e DeepSeek (V3/R1) com seletor instantâneo
-- Monitoramento de canais do YouTube com corte e postagem automáticos
-- Biblioteca de downloads do TikTok com legendas automáticas (.info.txt) e geração de capas
-- Publicador TikTok multi-contas isoladas via Playwright
-- Servidor MCP para integração com Claude, Cursor e agentes externos
+Roda em pasta própria (tikclip-web) sem alterar nenhum arquivo do TikClip Studio original,
+reaproveitando:
+- Contas do TikTok já logadas em %APPDATA%\\TikClip
+- Projetos, cortes e banco de dados SQLite existentes
+- Motores locais de Whisper, FFmpeg, yt-dlp e Playwright
 """
 from __future__ import annotations
 
 import os
-import shutil
 import socket
 import subprocess
 import sys
@@ -26,12 +21,11 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 WEB_DIR = HERE / 'web'
 
-# Diretório de dados configurável (se TIKCLIP_DATA_DIR não definido, usa %APPDATA%\TikClip ou ~/.tikclip)
-DATA_DIR = Path(
-    os.environ.get('TIKCLIP_DATA_DIR')
-    or (Path(os.environ.get('APPDATA') or Path.home()) / 'TikClip')
-)
-DATA_DIR.mkdir(parents=True, exist_ok=True)
+STUDIO_ROOT = Path(r'C:\Users\Uilian\Desktop\tikclip-studio')
+STUDIO_APP = STUDIO_ROOT / 'app'
+STUDIO_RUNTIME = STUDIO_APP / 'runtime'
+
+DATA_DIR = Path(os.environ.get('APPDATA') or Path.home()) / 'TikClip'
 
 
 def _proteger_logging_utf8() -> None:
@@ -59,7 +53,7 @@ def _proteger_logging_utf8() -> None:
 
 
 def _sem_janelas_de_console() -> None:
-    """Impede que chamadas internas ao ffmpeg/ffprobe/yt-dlp abram janelas pretas no Windows."""
+    """Impede que chamadas internas ao ffmpeg/ffprobe/yt-dlp abram janelas pretas."""
     if os.name != 'nt':
         return
     sem_janela = getattr(subprocess, 'CREATE_NO_WINDOW', 0x08000000)
@@ -76,15 +70,9 @@ def _sem_janelas_de_console() -> None:
 
 
 def _resolver_ffmpeg() -> None:
-    """Localiza executáveis do FFmpeg e FFprobe dinamicamente no sistema ou pasta local."""
-    env_ffmpeg = os.environ.get('TIKCLIP_FFMPEG_PATH')
-    env_ffprobe = os.environ.get('TIKCLIP_FFPROBE_PATH')
-    if env_ffmpeg and env_ffprobe and Path(env_ffmpeg).is_file() and Path(env_ffprobe).is_file():
-        return
-
     candidatos = [
-        HERE / 'runtime' / 'ffmpeg',
-        HERE / 'ffmpeg',
+        STUDIO_ROOT / 'runtime' / 'ffmpeg',
+        STUDIO_ROOT / 'ffmpeg',
         Path(os.environ.get('LOCALAPPDATA', '')) / 'TikClip Desktop' / 'resources' / 'ffmpeg',
     ]
     for pasta in candidatos:
@@ -94,13 +82,6 @@ def _resolver_ffmpeg() -> None:
             os.environ.setdefault('TIKCLIP_FFMPEG_PATH', str(ffmpeg))
             os.environ.setdefault('TIKCLIP_FFPROBE_PATH', str(ffprobe))
             return
-
-    # Procura no PATH do sistema
-    which_ffmpeg = shutil.which('ffmpeg')
-    which_ffprobe = shutil.which('ffprobe')
-    if which_ffmpeg and which_ffprobe:
-        os.environ.setdefault('TIKCLIP_FFMPEG_PATH', which_ffmpeg)
-        os.environ.setdefault('TIKCLIP_FFPROBE_PATH', which_ffprobe)
 
 
 def _aprimorar_llm_manager() -> None:
@@ -118,7 +99,7 @@ def _aprimorar_llm_manager() -> None:
                 model_name = self.settings.get('model_name') or 'gemini-2.5-flash'
                 if api_key:
                     try:
-                        self.provider = GeminiProvider(api_key=api_key, model_name=model_name)
+                        self.current_provider = GeminiProvider(api_key=api_key, model_name=model_name)
                         return
                     except Exception:
                         pass
@@ -130,28 +111,41 @@ def _aprimorar_llm_manager() -> None:
 
 
 def _aprimorar_publicador() -> None:
-    """Aprimora o publicador em lote do TikTok com timeouts generosos e progresso em tempo real."""
+    """Adiciona suporte para pular o intervalo de espera imediatamente durante publicações em lote."""
     try:
         import api_ext
+        import time
 
-        def _custom_publish_loop(pid: str, variant_ids: list[str], account: str, interval: int, render_wait: bool):
+        def _custom_publish_loop(pid, account, vids, interval, render_wait):
+            total = len(vids)
             published = 0
             failed = 0
-            total = len(variant_ids)
-
             with api_ext._PUB_LOCK:
-                api_ext._PUB.update(running=True, stop=False, total=total, index=0, project_id=pid)
+                api_ext._PUB.update(
+                    running=True,
+                    stop=False,
+                    skip_wait=False,
+                    index=0,
+                    total=total,
+                    message='Iniciando...',
+                    account=account,
+                    project_id=pid,
+                )
+            api_ext._pub_log(f'iniciando fila de {total} corte(s) na conta "{account}"')
 
-            for idx, vid in enumerate(variant_ids, 1):
+            for idx, vid in enumerate(vids, start=1):
                 with api_ext._PUB_LOCK:
                     if api_ext._PUB['stop']:
                         api_ext._pub_log('Publicação interrompida pelo usuário.')
                         break
                     api_ext._PUB['index'] = idx
+                    api_ext._PUB['message'] = f'Publicando {idx}/{total}'
 
                 clip = api_ext._variant_payload(pid, vid)
                 if not clip or not clip.get('has_video'):
                     failed += 1
+                    continue
+                if clip.get('status') == 'publicado':
                     continue
 
                 state = api_ext._read_studio(pid)
@@ -164,7 +158,7 @@ def _aprimorar_publicador() -> None:
                     continue
 
                 cover = api_ext._cover_path(pid, job.get('job_id') if job else None, vid)
-                api_ext._pub_log(f'[{idx}/{total}] Enviando "{clip["title"]}"...')
+                api_ext._pub_log(f'[{idx}/{total}] enviando "{clip["title"]}"...')
 
                 def progress(msg: str, _idx=idx, _t=total):
                     if msg:
@@ -172,8 +166,7 @@ def _aprimorar_publicador() -> None:
 
                 try:
                     result = api_ext.ttl.publish_video(
-                        video, clip['title'], clip['description'], clip['tags'],
-                        cover_path=cover, account=account, progress=progress
+                        video, clip['title'], clip['description'], clip['tags'], cover, account=account, progress=progress
                     )
                     status = (result or {}).get('status')
                     try:
@@ -182,18 +175,18 @@ def _aprimorar_publicador() -> None:
                         pass
                     if status == 'completed':
                         published += 1
-                        api_ext._pub_log(f'[{idx}/{total}] Publicado com sucesso ✔')
+                        api_ext._pub_log(f'[{idx}/{total}] publicado com sucesso ✔')
                     else:
-                        api_ext._pub_log(f'[{idx}/{total}] Enviado ({status}) — confira o rascunho no TikTok')
+                        api_ext._pub_log(f'[{idx}/{total}] enviado ({status}) — confira o rascunho no TikTok')
                 except Exception as exc:
                     failed += 1
-                    api_ext._pub_log(f'[{idx}/{total}] Falhou: {exc}')
+                    api_ext._pub_log(f'[{idx}/{total}] falhou: {exc}')
 
                 if idx >= total or not interval:
                     continue
 
                 wait_s = int(interval * 60)
-                api_ext._pub_log(f'Aguardando {interval} min antes do próximo corte...')
+                api_ext._pub_log(f'aguardando {interval} min antes do próximo')
                 if render_wait:
                     try:
                         api_ext.ext_render_pending({'project_id': pid})
@@ -252,6 +245,33 @@ def _aprimorar_pydantic_cenas() -> None:
         print(f'[aviso] patch pydantic cenas: {exc}')
 
 
+def _aprimorar_hashtags_projeto() -> None:
+    """Garante leitura correta de hashtags do projeto mesmo quando salvas como lista JSON direta."""
+    try:
+        import api_ext
+        import json
+
+        def _safe_ler_hashtags_projeto(pid: str) -> list[str]:
+            try:
+                p = api_ext._hashtags_path(pid)
+                if not p.is_file():
+                    return []
+                dados = json.loads(p.read_text(encoding='utf-8'))
+                if isinstance(dados, list):
+                    return [str(t).strip().lstrip('#') for t in dados if str(t).strip()][:15]
+                if isinstance(dados, dict):
+                    tags = dados.get('tags')
+                    if isinstance(tags, list):
+                        return [str(t).strip().lstrip('#') for t in tags if str(t).strip()][:15]
+            except Exception:
+                pass
+            return []
+
+        api_ext.ler_hashtags_projeto = _safe_ler_hashtags_projeto
+    except Exception as exc:
+        print(f'[aviso] patch hashtags projeto: {exc}')
+
+
 def escolher_porta(preferida: int = 8585) -> int:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         if s.connect_ex(('127.0.0.1', preferida)) != 0:
@@ -279,14 +299,15 @@ def preparar_ambiente() -> int:
 
     _resolver_ffmpeg()
 
-    for caminho in (str(HERE), str(HERE / 'backend')):
+    for caminho in (str(HERE), str(STUDIO_APP), str(STUDIO_RUNTIME), str(STUDIO_ROOT)):
         if caminho not in sys.path:
             sys.path.insert(0, caminho)
 
     _aprimorar_llm_manager()
     _aprimorar_publicador()
     _aprimorar_pydantic_cenas()
-    porta_env = os.getenv('TIKCLIP_WEB_PORT') or os.getenv('PORT')
+    _aprimorar_hashtags_projeto()
+    porta_env = os.getenv('TIKCLIP_WEB_PORT')
     return int(porta_env) if porta_env else escolher_porta(8585)
 
 
@@ -323,16 +344,9 @@ def montar_app(porta: int):
 
     app.mount('/ui', StaticFiles(directory=str(WEB_DIR), html=True), name='ui')
 
-    # Diretório configurável para biblioteca de downloads do TikTok
-    raw_tt_dir = os.environ.get('TIKTOK_DOWNLOADS_DIR')
-    if raw_tt_dir:
-        tiktok_downloads_dir = Path(raw_tt_dir)
-    else:
-        # Fallback inteligente: pasta local downloads/tiktok
-        tiktok_downloads_dir = HERE / 'downloads' / 'tiktok'
-
-    tiktok_downloads_dir.mkdir(parents=True, exist_ok=True)
-    app.mount('/media/tiktok-downloads', StaticFiles(directory=str(tiktok_downloads_dir)), name='tiktok_downloads')
+    tiktok_downloads_dir = Path(r'C:\Users\Uilian\.gemini\antigravity\scratch\tiktok-downloader-web\downloads')
+    if tiktok_downloads_dir.is_dir():
+        app.mount('/media/tiktok-downloads', StaticFiles(directory=str(tiktok_downloads_dir)), name='tiktok_downloads')
 
     return app
 
@@ -361,9 +375,9 @@ def main() -> int:
     url = f'http://localhost:{porta}/ui/'
 
     print('=' * 62)
-    print('  TikClip Web (Design SupoClip) — Servidor Portátil')
+    print('  TikClip Web (Design SupoClip) — Iniciando Servidor')
     print('=' * 62)
-    print(f'  Dados & Contas        : {DATA_DIR}')
+    print(f'  Dados & Contas TikTok : {DATA_DIR}')
     print(f'  FFmpeg                : {os.environ.get("TIKCLIP_FFMPEG_PATH", "PATH")}')
     print(f'  Endereço no Navegador : {url}')
     print('=' * 62)

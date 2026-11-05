@@ -1116,7 +1116,19 @@ def supo_publish_single_youtube(payload: dict[str, Any]) -> dict[str, Any]:
         if not description:
             description = variant.get('description') or ''
         if not tags:
-            tags = variant.get('tags') or ''
+            tags = variant.get('tags') or []
+            if not tags:
+                try:
+                    ht_file = api_ext.projects_dir() / project_id / 'metadata' / 'hashtags-ext.json'
+                    if ht_file.is_file():
+                        import json as _json
+                        ht_data = _json.loads(ht_file.read_text(encoding='utf-8'))
+                        if isinstance(ht_data, list):
+                            tags = ht_data
+                        elif isinstance(ht_data, dict):
+                            tags = ht_data.get('tags') or []
+                except Exception:
+                    pass
         if not thumbnail_path_str:
             c_path = api_ext._cover_path(project_id, job.get('job_id') if job else None, variant_id)
             if c_path and c_path.is_file():
@@ -1282,6 +1294,20 @@ def supo_get_youtube_library_clips() -> dict[str, Any]:
                 jobs = {j['job_id']: j for j in state.get('jobs', []) if j.get('job_id')}
                 p_name = projects_map.get(pid) or state.get('project_name') or state.get('title') or (state.get('meta') or {}).get('title') or pid
                 clips = api_ext.project_clips(pid)
+                # Garante tags do projeto caso o corte não tenha herdado diretamente
+                proj_ht = []
+                try:
+                    ht_file = entry / 'metadata' / 'hashtags-ext.json'
+                    if ht_file.is_file():
+                        import json as _json
+                        ht_data = _json.loads(ht_file.read_text(encoding='utf-8'))
+                        if isinstance(ht_data, list):
+                            proj_ht = [str(t).strip().lstrip('#') for t in ht_data if str(t).strip()]
+                        elif isinstance(ht_data, dict) and isinstance(ht_data.get('tags'), list):
+                            proj_ht = [str(t).strip().lstrip('#') for t in ht_data['tags'] if str(t).strip()]
+                except Exception:
+                    pass
+
                 for c in clips:
                     if c.get('status') == 'pronto' and c.get('has_video'):
                         variant_id = c['id']
@@ -1290,13 +1316,19 @@ def supo_get_youtube_library_clips() -> dict[str, Any]:
                         v_path = api_ext._video_path(pid, job)
                         c_path = api_ext._cover_path(pid, job.get('job_id') if job else None, variant_id)
 
+                        # Combina as tags do corte com as tags do projeto
+                        clip_tags = list(c.get('tags') or [])
+                        for pt in proj_ht:
+                            if pt not in clip_tags:
+                                clip_tags.append(pt)
+
                         all_clips.append({
                             'project_id': pid,
                             'project_name': p_name,
                             'clip_id': variant_id,
                             'title': c.get('title') or 'Corte Viral',
                             'description': c.get('description') or '',
-                            'tags': c.get('tags') or [],
+                            'tags': clip_tags,
                             'status': c.get('status'),
                             'duration': c.get('duration'),
                             'duration_label': c.get('duration_label') or '',

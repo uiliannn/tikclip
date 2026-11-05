@@ -348,15 +348,60 @@ def publish_video(
                 pass
         logger.info("[YouTube Publisher] %s", msg)
 
-    # Tratamento do Título (máximo 100 caracteres no YouTube)
-    clean_title = (title or v_path.stem).strip()
-    if is_short and "#shorts" not in clean_title.lower():
-        if len(clean_title) + 8 <= 100:
-            clean_title = f"{clean_title} #Shorts"
-        elif "#shorts" not in (description or "").lower():
-            description = f"{description}\n\n#Shorts".strip()
+    # 1. Tratamento e normalização das hashtags/tags
+    clean_tags: list[str] = []
+    if isinstance(tags, list):
+        raw_tag_list = tags
+    else:
+        raw_tag_list = re.split(r'[\s,;]+', str(tags or ''))
 
-    final_title = clean_title[:100]
+    vistos = set()
+    for t in raw_tag_list:
+        tag_str = re.sub(r'[^0-9A-Za-zÀ-ÿ_]', '', str(t)).strip()
+        if tag_str and tag_str.lower() not in vistos:
+            vistos.add(tag_str.lower())
+            clean_tags.append(tag_str)
+
+    # 2. Tratamento do Título (máximo 100 caracteres no YouTube)
+    clean_title = (title or v_path.stem).strip()
+
+    title_tags = []
+    if is_short and "#shorts" not in clean_title.lower():
+        title_tags.append("Shorts")
+
+    for t in clean_tags:
+        if t.lower() == "shorts":
+            continue
+        if f"#{t.lower()}" in clean_title.lower():
+            continue
+        title_tags.append(t)
+
+    # Monta o título incorporando as hashtags enquanto couber em 100 caracteres
+    final_title = clean_title
+    for t in title_tags:
+        tag_token = f" #{t}"
+        if len(final_title) + len(tag_token) <= 100:
+            final_title += tag_token
+
+    # 3. Tratamento da Descrição: inclui descrição + bloco com TODAS as hashtags
+    all_desc_tags = []
+    if is_short and not any(t.lower() == "shorts" for t in clean_tags):
+        all_desc_tags.append("Shorts")
+    for t in clean_tags:
+        if t.lower() not in [x.lower() for x in all_desc_tags]:
+            all_desc_tags.append(t)
+
+    hashtags_block = " ".join(f"#{t}" for t in all_desc_tags)
+    desc_parts = []
+    if (description or "").strip():
+        desc_parts.append(description.strip())
+    elif clean_title != final_title:
+        desc_parts.append(clean_title)
+
+    if hashtags_block:
+        desc_parts.append(hashtags_block)
+
+    final_description = "\n\n".join(desc_parts).strip()[:5000]
 
     _prog(f'Iniciando envio no YouTube Studio: "{final_title}"...')
     _prog(f'Conta: {account or "default"} | Modo: {"Shorts" if is_short else "Vídeo Normal"}')
@@ -462,8 +507,8 @@ def publish_video(
             time.sleep(0.5)
 
             # 2. PREENCHIMENTO DA DESCRIÇÃO
-            if description:
-                _prog("Preenchendo descrição do vídeo...")
+            if final_description:
+                _prog(f"Preenchendo descrição do vídeo com {len(all_desc_tags)} hashtag(s)...")
                 try:
                     desc_input = page.locator(
                         "#description-textarea #textbox, [aria-label*='descrição' i][contenteditable='true'], [aria-label*='description' i][contenteditable='true']"
@@ -482,7 +527,7 @@ def publish_video(
                             }
                         }""", description[:5000])
                         try:
-                            desc_input.fill(description[:5000])
+                            desc_input.fill(final_description)
                         except Exception:
                             pass
                         time.sleep(0.5)
@@ -627,16 +672,62 @@ def publish_video(
                     const btn = document.querySelector('#done-button, ytcp-button#done-button');
                     if (btn) btn.click();
                 }""")
-            time.sleep(3)
+            time.sleep(2)
 
-            # 10. AGUARDA CONFIRMAÇÃO OU TELA DE SUCESSO
-            _prog("Aguardando confirmação de processamento...")
+            # 10. TRATAR JANELAS DE CONFIRMAÇÃO ("Ainda estamos verificando seu conteúdo")
+            _prog("Aguardando confirmação de publicação ou verificações pendentes...")
+            deadline_check = time.monotonic() + 15
+            while time.monotonic() < deadline_check:
+                # 1. Tenta via evaluate para encontrar qualquer botão com texto "Publicar mesmo assim" / "Publish anyway"
+                clicked_anyway = page.evaluate("""() => {
+                    const elements = Array.from(document.querySelectorAll('button, ytcp-button, tp-yt-paper-button, [role="button"], div[role="button"]'));
+                    for (const el of elements) {
+                        const txt = (el.textContent || '').trim().toLowerCase();
+                        if (txt.includes('publicar mesmo assim') || txt.includes('publish anyway')) {
+                            el.click();
+                            return true;
+                        }
+                    }
+                    return false;
+                }""")
+                if clicked_anyway:
+                    _prog('Janela detectada: "Ainda estamos verificando seu conteúdo". Clicado em "Publicar mesmo assim" automaticamente ✔')
+                    time.sleep(2)
+                    break
+
+                # 2. Tenta seletores diretos de Playwright
+                pub_anyway_loc = page.locator(
+                    "button:has-text('Publicar mesmo assim'), ytcp-button:has-text('Publicar mesmo assim'), button:has-text('Publish anyway'), ytcp-button:has-text('Publish anyway'), #confirm-button"
+                ).first
+                try:
+                    if pub_anyway_loc.is_visible(timeout=600):
+                        _prog('Janela detectada: "Ainda estamos verificando seu conteúdo". Clicado em "Publicar mesmo assim" automaticamente ✔')
+                        pub_anyway_loc.click()
+                        time.sleep(2)
+                        break
+                except Exception:
+                    pass
+
+                # Se o botão de fechar do modal de sucesso já apareceu, encerra a espera de diálogo
+                try:
+                    close_test = page.locator(
+                        "ytcp-uploads-dialog #close-button, ytcp-video-upload-progress #close-button, button:has-text('Fechar'), button:has-text('Close')"
+                    ).first
+                    if close_test.is_visible(timeout=600):
+                        break
+                except Exception:
+                    pass
+
+                time.sleep(1)
+
+            # 11. AGUARDA CONFIRMAÇÃO OU TELA DE SUCESSO
+            _prog("Aguardando confirmação final de processamento do YouTube...")
             try:
                 # Modal de confirmação: "Vídeo publicado" ou "Processando vídeo"
                 close_btn = page.locator(
                     "ytcp-uploads-dialog #close-button, ytcp-video-upload-progress #close-button, button:has-text('Fechar'), button:has-text('Close')"
                 ).first
-                if close_btn.is_visible(timeout=25000):
+                if close_btn.is_visible(timeout=30000):
                     # Tenta extrair o link final presente na tela de confirmação
                     if not video_url:
                         try:
