@@ -178,6 +178,16 @@ def _aprimorar_publicador() -> None:
                         api_ext._pub_log(f'[{idx}/{total}] publicado com sucesso ✔')
                     else:
                         api_ext._pub_log(f'[{idx}/{total}] enviado ({status}) — confira o rascunho no TikTok')
+                    # Limpa blobs temporários do IndexedDB para não inflar o disco
+                    try:
+                        p_dir = Path(api_ext.ttl.profile_dir(account))
+                        idb = p_dir / 'Default' / 'IndexedDB'
+                        if idb.is_dir():
+                            import shutil
+                            for b in idb.glob('*.indexeddb.blob'):
+                                shutil.rmtree(b, ignore_errors=True)
+                    except Exception:
+                        pass
                 except Exception as exc:
                     failed += 1
                     api_ext._pub_log(f'[{idx}/{total}] falhou: {exc}')

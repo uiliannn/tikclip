@@ -303,6 +303,20 @@ def login_session(
                 context.close()
             except Exception:
                 pass
+            _clean_browser_blobs(p_dir)
+
+
+def _clean_browser_blobs(profile_path: Path) -> None:
+    """Limpa blobs temporários de vídeos no IndexedDB para evitar acúmulo de dezenas de GB."""
+    try:
+        idb_dir = profile_path / "Default" / "IndexedDB"
+        if idb_dir.is_dir():
+            import shutil
+            for entry in idb_dir.iterdir():
+                if entry.name.endswith(".indexeddb.blob"):
+                    shutil.rmtree(entry, ignore_errors=True)
+    except Exception:
+        pass
 
 
 def publish_video(
