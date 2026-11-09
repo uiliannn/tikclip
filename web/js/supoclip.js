@@ -3372,6 +3372,111 @@ async function renderTikTokCreatorsList(container) {
     ),
   );
 
+  // Componente de Download Rápido do TikTok
+  const txtDlTarget = h('input', {
+    type: 'text',
+    class: 'sc-input',
+    placeholder: 'Cole o link de qualquer vídeo ou canal do TikTok para baixar agora...',
+    style: 'flex:1; min-width:280px; font-size:13px; padding:10px 14px;'
+  });
+
+  const selDlQtd = h('select', {
+    class: 'sc-select',
+    style: 'width:120px; font-size:12.5px; padding:10px 8px; font-weight:600;'
+  },
+    h('option', { value: '1', text: '1 vídeo' }),
+    h('option', { value: '3', text: '3 vídeos' }),
+    h('option', { value: '5', selected: true, text: '5 vídeos' }),
+    h('option', { value: '10', text: '10 vídeos' })
+  );
+
+  const dlProgressBox = h('div', {
+    style: 'display:none; margin-top:12px; padding:14px; background:rgba(16,185,129,0.06); border:1px solid rgba(16,185,129,0.25); border-radius:8px;'
+  },
+    h('div', { style: 'display:flex; justify-content:space-between; font-size:12px; font-weight:700; margin-bottom:6px;' },
+      h('span', { id: 'tt-dl-list-msg', text: 'Iniciando download...' }),
+      h('span', { id: 'tt-dl-list-pct', text: '0%' })
+    ),
+    h('div', { style: 'background:rgba(255,255,255,0.1); border-radius:6px; height:7px; overflow:hidden;' },
+      h('div', { id: 'tt-dl-list-bar', style: 'background:linear-gradient(90deg, #10b981, #3b82f6); height:100%; width:0%; transition:width 0.3s ease;' })
+    )
+  );
+
+  const btnDoDownload = h('button', {
+    class: 'sc-btn sc-btn-primary',
+    style: 'background:#10b981; border-color:#10b981; font-weight:700; font-size:13px; padding:10px 18px; display:flex; align-items:center; gap:6px;',
+    onclick: async () => {
+      const val = txtDlTarget.value.trim();
+      if (!val) {
+        toast('Cole um link ou @usuário do TikTok.');
+        txtDlTarget.focus();
+        return;
+      }
+      btnDoDownload.disabled = true;
+      btnDoDownload.textContent = '⏳ Baixando...';
+      dlProgressBox.style.display = 'block';
+
+      try {
+        await apiSupo('/tiktok-downloads/start', {
+          method: 'POST',
+          body: JSON.stringify({
+            target: val,
+            max_videos: parseInt(selDlQtd.value) || 5
+          })
+        });
+
+        const timer = setInterval(async () => {
+          try {
+            const res = await apiSupo('/tiktok-downloads/status');
+            const t = res.task || {};
+            const pct = t.percent || 0;
+            const bar = document.getElementById('tt-dl-list-bar');
+            const msg = document.getElementById('tt-dl-list-msg');
+            const pctEl = document.getElementById('tt-dl-list-pct');
+            if (bar) bar.style.width = `${pct}%`;
+            if (msg) msg.textContent = t.message || 'Baixando...';
+            if (pctEl) pctEl.textContent = `${pct.toFixed(0)}%`;
+
+            if (!t.running) {
+              clearInterval(timer);
+              btnDoDownload.disabled = false;
+              btnDoDownload.textContent = '📥 Baixar';
+              if (t.error) {
+                toast('Erro: ' + t.error);
+              } else {
+                toast(`Download concluído com sucesso!`);
+                renderTikTokCreatorsList(container);
+              }
+            }
+          } catch (e) {
+            console.warn(e);
+          }
+        }, 1000);
+
+      } catch (err) {
+        toast('Erro ao iniciar: ' + err.message);
+        btnDoDownload.disabled = false;
+        btnDoDownload.textContent = '📥 Baixar';
+        dlProgressBox.style.display = 'none';
+      }
+    }
+  }, '📥 Baixar');
+
+  const dlCard = h('div', {
+    class: 'sc-card',
+    style: 'padding:16px 20px; margin-bottom:20px; border-left:4px solid #10b981;'
+  },
+    h('div', { style: 'font-weight:700; font-size:13.5px; margin-bottom:6px; display:flex; align-items:center; gap:6px;' },
+      '📥 Baixar Novos Vídeos do TikTok'
+    ),
+    h('div', { style: 'display:flex; gap:10px; flex-wrap:wrap; align-items:center;' },
+      txtDlTarget,
+      selDlQtd,
+      btnDoDownload
+    ),
+    dlProgressBox
+  );
+
   // Barra de métricas rápidas
   const totalMb = creators.reduce((acc, c) => acc + (c.total_size_mb || 0), 0);
   const totalPublicados = creators.reduce((acc, c) => acc + (c.published_count || 0), 0);
@@ -3527,7 +3632,7 @@ async function renderTikTokCreatorsList(container) {
     }
   }
 
-  container.append(head, statsBar, grid);
+  container.append(head, dlCard, statsBar, grid);
 }
 
 async function renderTikTokCreatorVideos(container, folder) {
@@ -4914,6 +5019,10 @@ window.addEventListener('DOMContentLoaded', async () => {
 async function renderTradutor(container) {
   container.replaceChildren();
 
+  if (!state.tradutorActiveTab) {
+    state.tradutorActiveTab = 'dubbed';
+  }
+
   const head = h('div', { class: 'sc-view-head' },
     h('div', null,
       h('h1', { class: 'sc-view-title', style: 'display:flex; align-items:center; gap:8px;' },
@@ -4921,18 +5030,22 @@ async function renderTradutor(container) {
         h('span', { class: 'sc-pill-status', style: 'font-size:12px; background:rgba(59,130,246,0.15); color:#60a5fa;' }, 'VoiceStudio + Whisper')
       ),
       h('p', { class: 'sc-view-desc' },
-        'Transcreva qualquer vídeo em inglês ou outro idioma, traduza e gere a fala natural em Português com legendas dinâmicas estilo TikTok/Shorts.'
+        'Baixe vídeos do TikTok, transcreva falas em qualquer idioma, duble com a voz clonada (Davy Jones) e adicione legendas personalizadas.'
       ),
     ),
     h('div', { style: 'display:flex; gap:10px;' },
       h('button', {
         class: 'sc-btn',
         onclick: () => renderTradutor(container),
-      }, '🔄 Atualizar Lista'),
+      }, '🔄 Atualizar'),
       h('button', {
         class: 'sc-btn sc-btn-primary',
-        onclick: () => navegar('tiktok_downloads'),
-      }, '📥 Ver Vídeos Baixados'),
+        style: 'background:#10b981; border-color:#10b981;',
+        onclick: () => {
+          state.tradutorActiveTab = 'download';
+          renderTradutor(container);
+        },
+      }, '📥 Baixar do TikTok'),
     )
   );
 
@@ -4947,36 +5060,32 @@ async function renderTradutor(container) {
     console.warn(e);
   }
 
-  // Cards de status do topo
   const statusBar = h('div', {
     class: 'sc-card',
-    style: 'display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:16px; padding:16px 20px; margin-bottom:24px; border-left:4px solid #3b82f6;'
+    style: 'display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:16px; padding:14px 18px; margin-bottom:18px; border-left:4px solid #3b82f6;'
   },
     h('div', { style: 'display:flex; align-items:center; gap:12px;' },
-      h('div', { style: 'width:42px; height:42px; border-radius:10px; background:rgba(59,130,246,0.15); display:flex; align-items:center; justify-content:center; font-size:22px;' }, '🎙️'),
+      h('div', { style: 'width:38px; height:38px; border-radius:10px; background:rgba(59,130,246,0.15); display:flex; align-items:center; justify-content:center; font-size:20px;' }, '🎙️'),
       h('div', null,
-        h('div', { style: 'font-weight:700; font-size:14px;' },
-          'Motor de Voz: ',
-          h('span', { style: isVsOnline ? 'color:#22c55e;' : 'color:#3b82f6;' },
-            isVsOnline ? 'VoiceStudio Online (Porta 3900)' : 'Vozes Neurais Brasileiras Ativas (Microsoft Edge-TTS)'
-          )
+        h('div', { style: 'font-weight:700; font-size:13.5px;' },
+          'Voz Ativa: ',
+          h('span', { style: 'color:#22c55e;' }, '🎙️ Davy Jones (VoiceStudio Clone)'),
+          h('span', { style: 'font-size:11.5px; margin-left:8px; opacity:0.8;' }, isVsOnline ? '(Porta 3900 Conectada)' : '')
         ),
         h('div', { style: 'font-size:12px; color:var(--text-muted);' },
-          isVsOnline
-            ? 'VoiceStudio conectado e pronto para clonagem e síntese local.'
-            : 'VoiceStudio em espera — utilizando vozes brasileiras hiper-realistas (Antonio, Francisca, Thalita).'
+          'Pronto para dublar e legendar com controle de tamanho, estilos e opção sem legenda.'
         )
       )
     ),
     h('div', { style: 'display:flex; gap:8px;' },
-      ...voices.map(vc => h('span', {
+      ...voices.filter(v => v.is_default || v.name.includes('davyjones') || v.name.includes('Antonio')).map(vc => h('span', {
         class: 'sc-pill-status',
         style: vc.available ? 'background:rgba(34,197,94,0.12); color:#22c55e;' : 'opacity:0.6;'
-      }, `${vc.name.split(' ')[0]} ${vc.available ? '✔' : ''}`))
+      }, `${vc.name.split(' ')[0]} ✔`))
     )
   );
 
-  // Lista de Vídeos Já Dublados
+  // Carrega vídeos dublados
   let dubbedVideos = [];
   try {
     const dData = await apiSupo('/translator/dubbed');
@@ -4985,52 +5094,204 @@ async function renderTradutor(container) {
     console.warn(e);
   }
 
-  const dubbedSection = h('div', { style: 'margin-bottom:32px;' },
-    h('h2', { style: 'font-size:16px; font-weight:700; margin-bottom:14px; display:flex; align-items:center; gap:8px;' },
-      '🎬 Vídeos Prontos Traduzidos & Dublados',
-      h('span', { class: 'sc-badge-count', style: 'display:inline-block;' }, String(dubbedVideos.length))
-    )
-  );
+  // Barra de Navegação Interna por Abas
+  const tabBtnDubbed = h('button', {
+    class: `sc-btn ${state.tradutorActiveTab === 'dubbed' ? 'sc-btn-primary' : ''}`,
+    style: 'font-weight:700; font-size:13px; padding:8px 16px;',
+    onclick: () => { state.tradutorActiveTab = 'dubbed'; renderTradutor(container); }
+  }, `🎬 Vídeos Dublados (${dubbedVideos.length})`);
 
-  if (dubbedVideos.length === 0) {
-    dubbedSection.append(
-      h('div', { class: 'sc-card', style: 'padding:32px; text-align:center; color:var(--text-muted);' },
-        'Nenhum vídeo dublado ainda. Selecione um vídeo baixado do TikTok abaixo para traduzir e dublar!'
+  const tabBtnDownload = h('button', {
+    class: `sc-btn ${state.tradutorActiveTab === 'download' ? 'sc-btn-primary' : ''}`,
+    style: `font-weight:700; font-size:13px; padding:8px 16px; ${state.tradutorActiveTab === 'download' ? 'background:#10b981; border-color:#10b981;' : ''}`,
+    onclick: () => { state.tradutorActiveTab = 'download'; renderTradutor(container); }
+  }, '📥 Baixar Vídeos do TikTok');
+
+  const tabBtnChannels = h('button', {
+    class: `sc-btn ${state.tradutorActiveTab === 'channels' ? 'sc-btn-primary' : ''}`,
+    style: 'font-weight:700; font-size:13px; padding:8px 16px;',
+    onclick: () => { state.tradutorActiveTab = 'channels'; renderTradutor(container); }
+  }, '📁 Canais / Vídeos Baixados');
+
+  const tabsBar = h('div', {
+    style: 'display:flex; gap:10px; margin-bottom:20px; border-bottom:1px solid var(--border-color); padding-bottom:12px; flex-wrap:wrap;'
+  }, tabBtnDubbed, tabBtnDownload, tabBtnChannels);
+
+  // Conteúdo da Aba Ativa
+  const contentSection = h('div', null);
+
+  // ================= ABA 1: DOWNLOADER DO TIKTOK =================
+  if (state.tradutorActiveTab === 'download') {
+    const txtUrl = h('input', {
+      type: 'text',
+      class: 'sc-input',
+      placeholder: 'Cole aqui o link do vídeo, perfil (@canal) ou trending topic do TikTok...',
+      style: 'flex:1; min-width:320px; font-size:13.5px; padding:12px 14px;'
+    });
+
+    const selQtd = h('select', {
+      class: 'sc-select',
+      style: 'width:130px; font-size:13px; padding:12px 8px; font-weight:600;'
+    },
+      h('option', { value: '1', text: '1 vídeo' }),
+      h('option', { value: '3', text: '3 vídeos' }),
+      h('option', { value: '5', selected: true, text: '5 vídeos' }),
+      h('option', { value: '10', text: '10 vídeos' }),
+      h('option', { value: '20', text: '20 vídeos' })
+    );
+
+    const progressBox = h('div', {
+      style: 'display:none; margin-top:16px; padding:16px; background:rgba(16,185,129,0.06); border:1px solid rgba(16,185,129,0.25); border-radius:10px;'
+    },
+      h('div', { style: 'display:flex; justify-content:space-between; font-size:12.5px; font-weight:700; margin-bottom:8px;' },
+        h('span', { id: 'tt-dl-msg', text: 'Iniciando download...' }),
+        h('span', { id: 'tt-dl-pct', text: '0%' })
+      ),
+      h('div', { style: 'background:rgba(255,255,255,0.1); border-radius:8px; height:8px; overflow:hidden;' },
+        h('div', { id: 'tt-dl-bar', style: 'background:linear-gradient(90deg, #10b981, #3b82f6); height:100%; width:0%; transition:width 0.3s ease;' })
       )
     );
-  } else {
-    const dubbedGrid = h('div', { class: 'sc-clip-grid' });
-    for (const dv of dubbedVideos) {
-      const vidEl = h('video', {
-        src: dv.video_url,
-        controls: true,
-        poster: dv.cover_url || '',
-        preload: 'metadata',
-        style: 'width:100%; border-radius:8px; aspect-ratio:9/16; background:#000; object-fit:contain;'
+
+    const btnBaixar = h('button', {
+      class: 'sc-btn sc-btn-primary',
+      style: 'background:#10b981; border-color:#10b981; font-weight:700; font-size:13.5px; padding:12px 20px; display:flex; align-items:center; gap:8px; cursor:pointer;',
+      onclick: async () => {
+        const target = txtUrl.value.trim();
+        if (!target) {
+          toast('Por favor, cole um link ou nome de usuário do TikTok.');
+          txtUrl.focus();
+          return;
+        }
+        btnBaixar.disabled = true;
+        btnBaixar.textContent = '⏳ Baixando...';
+        progressBox.style.display = 'block';
+
+        try {
+          await apiSupo('/tiktok-downloads/start', {
+            method: 'POST',
+            body: JSON.stringify({
+              target: target,
+              max_videos: parseInt(selQtd.value) || 5
+            })
+          });
+
+          const timer = setInterval(async () => {
+            try {
+              const res = await apiSupo('/tiktok-downloads/status');
+              const t = res.task || {};
+              const pct = t.percent || 0;
+              const bar = document.getElementById('tt-dl-bar');
+              const msg = document.getElementById('tt-dl-msg');
+              const pctEl = document.getElementById('tt-dl-pct');
+              if (bar) bar.style.width = `${pct}%`;
+              if (msg) msg.textContent = t.message || 'Baixando vídeos...';
+              if (pctEl) pctEl.textContent = `${pct.toFixed(0)}%`;
+
+              if (!t.running) {
+                clearInterval(timer);
+                btnBaixar.disabled = false;
+                btnBaixar.textContent = '📥 Baixar do TikTok';
+                if (t.error) {
+                  toast('Erro no download: ' + t.error);
+                } else {
+                  toast(`Download concluído! ${t.downloaded_files ? t.downloaded_files.length : 0} vídeo(s) baixado(s).`);
+                  state.tradutorActiveTab = 'channels';
+                  renderTradutor(container);
+                }
+              }
+            } catch (err) {
+              console.warn(err);
+            }
+          }, 1000);
+
+        } catch (e) {
+          toast('Falha ao iniciar download: ' + e.message);
+          btnBaixar.disabled = false;
+          btnBaixar.textContent = '📥 Baixar do TikTok';
+          progressBox.style.display = 'none';
+        }
+      }
+    }, '📥 Baixar do TikTok');
+
+    const downloadCard = h('div', {
+      class: 'sc-card',
+      style: 'padding:24px; margin-bottom:24px;'
+    },
+      h('h2', { style: 'font-size:16px; font-weight:800; margin-bottom:6px; display:flex; align-items:center; gap:8px;' },
+        '📥 Baixar Vídeos do TikTok para Tradução'
+      ),
+      h('p', { style: 'font-size:13px; color:var(--text-muted); margin-bottom:16px;' },
+        'Cole o link de um vídeo individual (ex: https://www.tiktok.com/@user/video/...), o perfil (@canal) ou um tema do TikTok. Os vídeos são salvos prontos para dublagem e publicação.'
+      ),
+      h('div', { style: 'display:flex; gap:10px; flex-wrap:wrap; align-items:center;' },
+        txtUrl,
+        selQtd,
+        btnBaixar
+      ),
+      progressBox
+    );
+
+    contentSection.append(downloadCard);
+  }
+
+  // ================= ABA 2: VÍDEOS DUBLADOS (COMPACTOS 220px) =================
+  else if (state.tradutorActiveTab === 'dubbed') {
+    if (dubbedVideos.length === 0) {
+      contentSection.append(
+        h('div', { class: 'sc-card', style: 'padding:36px; text-align:center; color:var(--text-muted);' },
+          h('div', { style: 'font-size:32px; margin-bottom:8px;' }, '🎬'),
+          h('div', { style: 'font-weight:700; font-size:15px; margin-bottom:6px;' }, 'Nenhum vídeo dublado ainda'),
+          h('div', { style: 'font-size:13px; margin-bottom:16px;' }, 'Baixe um vídeo do TikTok na aba ao lado ou selecione um canal abaixo para dublar com Davy Jones!'),
+          h('button', {
+            class: 'sc-btn sc-btn-primary',
+            style: 'background:#10b981; border-color:#10b981;',
+            onclick: () => { state.tradutorActiveTab = 'download'; renderTradutor(container); }
+          }, '📥 Baixar Vídeo Agora')
+        )
+      );
+    } else {
+      // GRID FLEXÍVEL COMPACTO (NÃO ESTICA NA TELA)
+      const compactFlexGrid = h('div', {
+        style: 'display:flex; flex-wrap:wrap; gap:16px; justify-content:flex-start; align-items:flex-start;'
       });
 
-      const dCard = h('div', { class: 'sc-clip-card' },
-        h('div', { class: 'sc-clip-media' }, vidEl),
-        h('div', { class: 'sc-clip-body' },
-          h('div', { class: 'sc-clip-title', text: dv.title, title: dv.title }),
-          h('div', { style: 'font-size:11.5px; color:var(--text-muted); margin:4px 0;' },
-            `📦 ${dv.size_mb} MB | 🕒 ${dv.created_at}`
+      for (const dv of dubbedVideos) {
+        const vidEl = h('video', {
+          src: dv.video_url,
+          controls: true,
+          poster: dv.cover_url || '',
+          preload: 'metadata',
+          style: 'width:100%; height:320px; border-radius:8px; aspect-ratio:9/16; background:#000; object-fit:contain;'
+        });
+
+        const dCard = h('div', {
+          class: 'sc-card',
+          style: 'width:220px; max-width:220px; padding:10px; display:flex; flex-direction:column; gap:8px; border-radius:12px; flex-shrink:0;'
+        },
+          vidEl,
+          h('div', {
+            style: 'font-size:12.5px; font-weight:700; line-height:1.3; max-height:34px; overflow:hidden; text-overflow:ellipsis; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical;',
+            text: dv.title,
+            title: dv.title
+          }),
+          h('div', { style: 'font-size:11px; color:var(--text-muted);' },
+            `📦 ${dv.size_mb} MB | 🕒 ${dv.created_at.split(' ')[0]}`
           ),
-          h('div', { class: 'sc-clip-actions', style: 'display:flex; flex-wrap:wrap; gap:6px; margin-top:auto;' },
+          h('div', { style: 'display:flex; flex-wrap:wrap; gap:6px; margin-top:auto;' },
             h('a', {
               class: 'sc-btn sc-btn-sm',
               href: dv.video_url,
               download: dv.filename,
-              style: 'text-decoration:none;'
-            }, '📥 Baixar MP4'),
+              style: 'text-decoration:none; padding:4px 8px; font-size:11.5px;'
+            }, '📥 MP4'),
             h('button', {
               class: 'sc-btn sc-btn-sm',
-              style: 'background:#ef4444; border-color:#ef4444; color:#fff;',
+              style: 'background:#ef4444; border-color:#ef4444; color:#fff; padding:4px 8px; font-size:11.5px;',
               onclick: async () => {
                 const targetYt = state.activeYtAccount || 'default';
-                if (!confirm(`Publicar este vídeo dublado no YouTube Shorts?`)) return;
+                if (!confirm(`Publicar no YouTube Shorts?`)) return;
                 try {
-                  toast('Enviando para o YouTube...');
+                  toast('Enviando para o YouTube Shorts...');
                   await apiSupo('/youtube-publisher/publish-single', {
                     method: 'POST',
                     body: JSON.stringify({
@@ -5039,7 +5300,7 @@ async function renderTradutor(container) {
                       video_url: dv.video_url,
                       title: dv.title,
                       description: `${dv.title}\n\n#Shorts #dublado #brasil #viral`,
-                      tags: ['Shorts', 'dublado', 'brasil', 'gta6'],
+                      tags: ['Shorts', 'dublado', 'brasil'],
                       is_short: true,
                       visibility: 'public',
                     }),
@@ -5050,12 +5311,13 @@ async function renderTradutor(container) {
                   toast('Erro ao publicar: ' + e.message);
                 }
               }
-            }, '🔴 YouTube Shorts'),
+            }, '🔴 Shorts'),
             h('button', {
               class: 'sc-btn sc-btn-sm sc-btn-primary',
+              style: 'padding:4px 8px; font-size:11.5px;',
               onclick: async () => {
                 const targetAcc = state.activeAccount || (state.accounts[0] || {}).id || 'conta_meuscortes';
-                if (!confirm(`Publicar este vídeo dublado no TikTok?`)) return;
+                if (!confirm(`Publicar no TikTok?`)) return;
                 try {
                   toast('Enviando para o TikTok...');
                   await apiSupo('/tiktok-downloads/publish', {
@@ -5076,53 +5338,55 @@ async function renderTradutor(container) {
               }
             }, '🚀 TikTok')
           )
-        )
-      );
-      dubbedGrid.append(dCard);
+        );
+        compactFlexGrid.append(dCard);
+      }
+      contentSection.append(compactFlexGrid);
     }
-    dubbedSection.append(dubbedGrid);
   }
 
-  // Lista de Criadores para Dublar
-  let creators = [];
-  try {
-    const cData = await apiSupo('/tiktok-downloads/creators');
-    creators = cData.creators || [];
-  } catch (e) {
-    console.warn(e);
+  // ================= ABA 3: CANAIS & VÍDEOS BAIXADOS =================
+  else if (state.tradutorActiveTab === 'channels') {
+    let creators = [];
+    try {
+      const cData = await apiSupo('/tiktok-downloads/creators');
+      creators = cData.creators || [];
+    } catch (e) {
+      console.warn(e);
+    }
+
+    const creatorsGrid = h('div', {
+      style: 'display:grid; grid-template-columns:repeat(auto-fill, minmax(260px, 1fr)); gap:14px;'
+    });
+
+    for (const c of creators) {
+      if (c.folder === '@dublados') continue;
+      const cCard = h('div', {
+        class: 'sc-card',
+        style: 'padding:16px; display:flex; flex-direction:column; gap:10px;'
+      },
+        h('div', { style: 'display:flex; align-items:center; gap:10px;' },
+          h('div', { style: 'width:40px; height:40px; border-radius:50%; background:rgba(59,130,246,0.15); display:flex; align-items:center; justify-content:center; font-size:20px;' }, '📱'),
+          h('div', null,
+            h('div', { style: 'font-weight:700; font-size:14px;' }, c.display_name || c.username),
+            h('div', { style: 'font-size:12px; color:var(--text-muted);' }, `${c.video_count} vídeos disponíveis (${c.total_size_mb} MB)`)
+          )
+        ),
+        h('button', {
+          class: 'sc-btn sc-btn-primary',
+          style: 'margin-top:auto; justify-content:center; font-size:12.5px; font-weight:700;',
+          onclick: () => {
+            state.selectedTikTokCreator = c.folder;
+            navegar('tiktok_downloads');
+          }
+        }, `🌐 Abrir Vídeos para Dublar (${c.video_count})`)
+      );
+      creatorsGrid.append(cCard);
+    }
+    contentSection.append(creatorsGrid);
   }
 
-  const chooseSection = h('div', null,
-    h('h2', { style: 'font-size:16px; font-weight:700; margin-bottom:14px;' },
-      '📁 Escolha um Canal/Tópico para Dublar Vídeos'
-    )
-  );
-
-  const creatorsGrid = h('div', { class: 'sc-clip-grid' });
-  for (const c of creators) {
-    if (c.folder === '@dublados') continue;
-    const cCard = h('div', { class: 'sc-card', style: 'padding:18px; display:flex; flex-direction:column; gap:12px;' },
-      h('div', { style: 'display:flex; align-items:center; gap:10px;' },
-        h('div', { style: 'width:38px; height:38px; border-radius:50%; background:rgba(59,130,246,0.15); display:flex; align-items:center; justify-content:center; font-size:18px;' }, '📱'),
-        h('div', null,
-          h('div', { style: 'font-weight:700; font-size:14px;' }, c.display_name || c.username),
-          h('div', { style: 'font-size:12px; color:var(--text-muted);' }, `${c.video_count} vídeos disponíveis (${c.total_size_mb} MB)`)
-        )
-      ),
-      h('button', {
-        class: 'sc-btn sc-btn-primary',
-        style: 'margin-top:auto; justify-content:center;',
-        onclick: () => {
-          state.selectedTikTokCreator = c.folder;
-          navegar('tiktok_downloads');
-        }
-      }, `🌐 Abrir Vídeos para Dublagem (${c.video_count})`)
-    );
-    creatorsGrid.append(cCard);
-  }
-  chooseSection.append(creatorsGrid);
-
-  container.append(head, statusBar, dubbedSection, chooseSection);
+  container.append(head, statusBar, tabsBar, contentSection);
 }
 
 /* ==========================================================================

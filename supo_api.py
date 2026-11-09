@@ -833,6 +833,31 @@ def supo_get_tiktok_creators() -> dict[str, Any]:
         raise HTTPException(status_code=500, detail=f'Erro ao listar criadores do TikTok: {exc}')
 
 
+@router.post('/tiktok-downloads/start')
+def supo_start_tiktok_download(payload: dict[str, Any]) -> dict[str, Any]:
+    """Inicia o download de vídeos ou perfil do TikTok."""
+    target = str(payload.get('target') or '').strip()
+    if not target:
+        raise HTTPException(status_code=400, detail='Link ou usuário do TikTok é obrigatório.')
+    max_videos = int(payload.get('max_videos', 5))
+    folder = payload.get('folder')
+
+    import tiktok_downloader
+    st = tiktok_downloader.get_download_status()
+    if st.get('running'):
+        raise HTTPException(status_code=400, detail='Já existe um download do TikTok em andamento.')
+
+    task_id = tiktok_downloader.start_download(target, max_videos=max_videos, folder_name=folder)
+    return {'ok': True, 'task_id': task_id, 'message': 'Download do TikTok iniciado.'}
+
+
+@router.get('/tiktok-downloads/status')
+def supo_get_tiktok_download_status() -> dict[str, Any]:
+    """Retorna o status em tempo real do download do TikTok."""
+    import tiktok_downloader
+    return {'ok': True, 'task': tiktok_downloader.get_download_status()}
+
+
 @router.post('/tiktok-downloads/channel-account')
 def supo_save_channel_account(payload: dict[str, Any]) -> dict[str, Any]:
     """Vincula uma conta do TikTok padrão a um canal baixado."""
