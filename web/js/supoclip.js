@@ -1608,6 +1608,7 @@ async function renderYouTubePublisher(container) {
 
   const tabs = [
     ['cortes', '📚 Cortes da Biblioteca'],
+    ['tiktok_downloads', '📱 Vídeos do TikTok'],
     ['shorts', '⚡ Publicar Shorts (Avulso)'],
     ['normal', '🎥 Publicar Vídeo Normal'],
     ['canais', '👥 Canais do YouTube'],
@@ -1986,6 +1987,333 @@ async function renderYouTubePublisher(container) {
 
     body.append(bannerControles, statusBanner, gridContainer);
     filtrarERenderizar();
+
+    pollStatus(statusBanner);
+    pollInterval = setInterval(() => pollStatus(statusBanner), 2500);
+  }
+
+  // -------------------------------------------------------------
+  // ABA 0.5: VÍDEOS BAIXADOS DO TIKTOK POR USUÁRIO
+  // -------------------------------------------------------------
+  else if (state.ytPubTab === 'tiktok_downloads') {
+    if (!state.ytSelectedTikTokVids) state.ytSelectedTikTokVids = new Set();
+    if (!state.ytFilterTikTokUser) state.ytFilterTikTokUser = 'todos';
+
+    const loadingCard = h('div', { class: 'sc-card', style: 'padding:32px; text-align:center; color:var(--text-muted);' },
+      'Carregando vídeos baixados do TikTok...'
+    );
+    body.append(loadingCard);
+
+    let creators = [];
+    try {
+      const cData = await apiSupo('/tiktok-downloads/creators');
+      creators = cData.creators || [];
+    } catch (e) {
+      toast('Erro ao buscar criadores: ' + (e.message || e));
+    }
+
+    body.replaceChildren();
+
+    if (!creators.length) {
+      body.append(
+        h('div', { class: 'sc-card', style: 'padding:40px; text-align:center;' },
+          h('div', { style: 'font-size:36px; margin-bottom:12px;' }, '📱'),
+          h('h3', { style: 'margin:0 0 8px 0;' }, 'Nenhum vídeo baixado do TikTok encontrado'),
+          h('p', { class: 'text-muted text-sm', style: 'max-width:500px; margin:0 auto 16px auto;' },
+            'Você pode baixar vídeos de perfis do TikTok usando o TikTok Auto Downloader ou a aba Vídeos do TikTok do menu lateral.'
+          ),
+          h('button', { class: 'sc-btn sc-btn-primary', onclick: () => navegar('tiktok_downloads') }, 'Ir para Vídeos do TikTok')
+        )
+      );
+      return;
+    }
+
+    // Seletor de Criador / Usuário
+    const userTabs = h('div', { style: 'display:flex; gap:8px; margin-bottom:16px; flex-wrap:wrap; align-items:center;' },
+      h('span', { style: 'font-size:12.5px; font-weight:700; color:var(--text-muted); margin-right:4px;' }, '👤 Usuário do TikTok:')
+    );
+
+    const totalTodos = creators.reduce((a, c) => a + (c.video_count || 0), 0);
+    const btnTodos = h('button', {
+      class: `sc-btn sc-btn-sm ${state.ytFilterTikTokUser === 'todos' ? 'sc-btn-primary' : ''}`,
+      onclick: () => {
+        state.ytFilterTikTokUser = 'todos';
+        state.ytSelectedTikTokVids.clear();
+        renderYouTubePublisher(container);
+      },
+    }, `Todos (${totalTodos})`);
+    userTabs.append(btnTodos);
+
+    for (const c of creators) {
+      const isSel = state.ytFilterTikTokUser === c.folder;
+      userTabs.append(
+        h('button', {
+          class: `sc-btn sc-btn-sm ${isSel ? 'sc-btn-primary' : ''}`,
+          onclick: () => {
+            state.ytFilterTikTokUser = c.folder;
+            state.ytSelectedTikTokVids.clear();
+            renderYouTubePublisher(container);
+          },
+        }, `${c.name || c.folder} (${c.video_count})`)
+      );
+    }
+
+    // Carrega vídeos correspondentes ao filtro
+    let videoList = [];
+    try {
+      if (state.ytFilterTikTokUser === 'todos') {
+        const results = await Promise.all(
+          creators.map((c) => apiSupo(`/tiktok-downloads/creators/${encodeURIComponent(c.folder)}/videos`).catch(() => ({ videos: [] })))
+        );
+        for (const r of results) {
+          if (r && r.videos) videoList.push(...r.videos);
+        }
+      } else {
+        const r = await apiSupo(`/tiktok-downloads/creators/${encodeURIComponent(state.ytFilterTikTokUser)}/videos`);
+        videoList = (r && r.videos) || [];
+      }
+    } catch (e) {
+      toast('Erro ao listar vídeos: ' + (e.message || e));
+    }
+
+    // Input de intervalo
+    const inpIntervaloTT = h('input', {
+      class: 'sc-input',
+      type: 'number',
+      min: 1,
+      value: String(state.publishInterval || 15),
+      style: 'width:68px; text-align:center;',
+      onchange: (e) => { state.publishInterval = Math.max(1, parseInt(e.target.value) || 15); },
+    });
+
+    const statusBanner = h('div', { class: 'sc-card', style: 'margin-bottom:16px;' });
+    const gridContainer = h('div', { class: 'sc-clips-grid', style: 'margin-top:16px;' });
+
+    const btnSelTodosTT = h('button', {
+      class: 'sc-btn sc-btn-sm',
+      onclick: () => {
+        if (state.ytSelectedTikTokVids.size === videoList.length && videoList.length > 0) {
+          state.ytSelectedTikTokVids.clear();
+        } else {
+          videoList.forEach((v) => state.ytSelectedTikTokVids.add(v.filename));
+        }
+        atualizarGridTT();
+      },
+    }, `Selecionar todos (${videoList.length})`);
+
+    const btnPublicarLoteTT = h('button', {
+      class: 'sc-btn sc-btn-primary sc-btn-sm',
+      style: 'background:#ef4444; border-color:#ef4444; color:#fff; font-weight:600;',
+      disabled: state.ytSelectedTikTokVids.size === 0,
+      onclick: async () => {
+        const itens = videoList.filter((v) => state.ytSelectedTikTokVids.has(v.filename));
+        if (!itens.length) return;
+        const targetYt = state.activeYtAccount || 'default';
+        const canalObj = (state.ytAccounts || []).find((a) => a.id === targetYt) || { name: 'Canal Principal' };
+        const intervalMin = parseInt(inpIntervaloTT.value, 10) || 15;
+
+        const conf = confirm(
+          `Publicar ${itens.length} vídeo(s) baixados do TikTok como Shorts no canal "${canalObj.name}" com intervalo de ${intervalMin} min?
+
+O progresso será exibido na aba de Fila.`
+        );
+        if (!conf) return;
+
+        btnPublicarLoteTT.disabled = true;
+        btnPublicarLoteTT.textContent = '🔴 Enfileirando...';
+
+        try {
+          const itemsPayload = itens.map((v) => ({
+            video_path: v.video_path,
+            title: v.title,
+            description: v.description || v.title,
+            tags: v.hashtags || [],
+            thumbnail_path: v.cover_path || null,
+            is_short: true,
+          }));
+
+          await apiSupo('/youtube-publisher/publish-batch', {
+            method: 'POST',
+            body: JSON.stringify({
+              items: itemsPayload,
+              account_id: targetYt,
+              interval_min: intervalMin,
+              visibility: 'public',
+            }),
+          });
+          toast(`Fila iniciada com ${itens.length} Shorts no YouTube!`);
+          state.ytPubTab = 'fila';
+          renderYouTubePublisher(container);
+        } catch (err) {
+          toast('Erro ao iniciar fila no YouTube: ' + err.message);
+          btnPublicarLoteTT.disabled = false;
+          btnPublicarLoteTT.textContent = `🚀 Publicar Selecionados (${state.ytSelectedTikTokVids.size})`;
+        }
+      },
+    }, `🚀 Publicar Selecionados (${state.ytSelectedTikTokVids.size})`);
+
+    function atualizarGridTT() {
+      btnSelTodosTT.textContent = state.ytSelectedTikTokVids.size === videoList.length && videoList.length > 0
+        ? `Limpar seleção (${state.ytSelectedTikTokVids.size})`
+        : `Selecionar todos (${videoList.length})`;
+      btnPublicarLoteTT.disabled = state.ytSelectedTikTokVids.size === 0;
+      btnPublicarLoteTT.textContent = `🚀 Publicar Selecionados (${state.ytSelectedTikTokVids.size})`;
+
+      gridContainer.replaceChildren();
+
+      if (!videoList.length) {
+        gridContainer.append(
+          h('div', { class: 'sc-card', style: 'grid-column:1/-1; text-align:center; padding:40px; color:var(--text-muted);' },
+            'Nenhum vídeo baixado encontrado para este usuário.'
+          )
+        );
+        return;
+      }
+
+      for (const v of videoList) {
+        const isChecked = state.ytSelectedTikTokVids.has(v.filename);
+
+        const chk = h('input', {
+          type: 'checkbox',
+          checked: isChecked,
+          style: 'transform:scale(1.2); cursor:pointer;',
+          onchange: (e) => {
+            if (e.target.checked) state.ytSelectedTikTokVids.add(v.filename);
+            else state.ytSelectedTikTokVids.delete(v.filename);
+            atualizarGridTT();
+          },
+        });
+
+        const videoEl = h('video', {
+          class: 'sc-clip-video',
+          src: v.video_url,
+          poster: v.cover_url || '',
+          controls: true,
+          preload: 'metadata',
+          playsinline: true,
+        });
+
+        const media = h('div', { class: 'sc-clip-media' },
+          videoEl,
+          h('div', { class: 'sc-clip-badges' },
+            h('span', { class: 'sc-pill-status is-pronto' }, `${v.size_mb} MB`),
+            h('span', { class: 'sc-pill-status' }, `@${v.folder}`),
+          )
+        );
+
+        const txtDescricao = h('textarea', {
+          class: 'sc-tiktok-caption-input',
+          style: 'font-size:11.5px; height:50px;',
+          title: 'Legenda do vídeo e hashtags (editável)',
+        });
+        txtDescricao.value = v.description || v.title;
+
+        const card = h('div', { class: 'sc-clip-card' },
+          media,
+          h('div', { class: 'sc-clip-body' },
+            h('div', { style: 'display:flex; align-items:flex-start; gap:8px;' },
+              chk,
+              h('div', { class: 'sc-clip-title', style: 'font-size:13px; font-weight:700;', text: v.title }),
+            ),
+            h('div', { style: 'margin-top:6px;' },
+              txtDescricao
+            ),
+            h('div', { class: 'sc-clip-tags', style: 'max-height:40px; overflow-y:auto; margin:4px 0;' },
+              ...(v.hashtags || []).map((t) => h('span', { class: 'sc-tag' }, t))
+            ),
+            h('div', { class: 'sc-clip-actions', style: 'display:flex; gap:6px; margin-top:auto;' },
+              h('button', {
+                class: 'sc-btn sc-btn-sm sc-btn-primary',
+                style: 'flex:1; font-size:12px; padding:6px 8px; background:#ef4444; border-color:#ef4444;',
+                title: 'Publicar este vídeo como Shorts no YouTube Studio',
+                onclick: async () => {
+                  const targetYt = state.activeYtAccount || 'default';
+                  const canalObj = (state.ytAccounts || []).find((a) => a.id === targetYt) || { name: 'Canal Principal' };
+                  if (!confirm(`Publicar "${v.title}" como Shorts no YouTube (${canalObj.name})?`)) return;
+                  try {
+                    toast('Iniciando envio do Shorts no YouTube...');
+                    await apiSupo('/youtube-publisher/publish-single', {
+                      method: 'POST',
+                      body: JSON.stringify({
+                        account_id: targetYt,
+                        video_path: v.video_path,
+                        title: v.title,
+                        description: txtDescricao.value,
+                        tags: v.hashtags || [],
+                        thumbnail_path: v.cover_path || null,
+                        is_short: true,
+                        visibility: 'public',
+                      }),
+                    });
+                    toast('Envio iniciado com sucesso!');
+                    state.ytPubTab = 'fila';
+                    renderYouTubePublisher(container);
+                  } catch (e) {
+                    toast('Erro ao publicar: ' + (e.message || e));
+                  }
+                },
+              }, '⚡ Shorts'),
+              h('button', {
+                class: 'sc-btn sc-btn-sm',
+                style: 'font-size:12px; padding:6px 8px;',
+                title: 'Gerar capa personalizada do vídeo com FFmpeg',
+                onclick: async (e) => {
+                  const btn = e.currentTarget;
+                  btn.disabled = true;
+                  btn.textContent = '🖼️...';
+                  try {
+                    const res = await apiSupo('/tiktok-downloads/generate-cover', {
+                      method: 'POST',
+                      body: JSON.stringify({ folder: v.folder, filename: v.filename, second: 1.5 }),
+                    });
+                    videoEl.poster = res.cover_url;
+                    v.cover_url = res.cover_url;
+                    toast('Capa gerada!');
+                    btn.textContent = '🖼️ Capa ✔';
+                  } catch (err) {
+                    toast('Erro: ' + err.message);
+                    btn.disabled = false;
+                    btn.textContent = '🖼️ Capa';
+                  }
+                },
+              }, v.cover_url ? '🖼️ Capa ✔' : '🖼️ Capa'),
+              h('button', {
+                class: 'sc-btn sc-btn-sm',
+                style: 'font-size:12px; padding:6px 8px;',
+                title: 'Copiar legenda',
+                onclick: () => {
+                  navigator.clipboard.writeText(txtDescricao.value);
+                  toast('Legenda copiada!');
+                },
+              }, '📋'),
+            )
+          )
+        );
+
+        gridContainer.append(card);
+      }
+    }
+
+    const bannerControlesTT = h('div', {
+      class: 'sc-card',
+      style: 'display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px; margin-bottom:16px;',
+    },
+      h('div', { style: 'display:flex; align-items:center; gap:10px;' },
+        btnSelTodosTT,
+        h('span', { style: 'font-size:12.5px; color:var(--text-muted);' }, `${videoList.length} vídeo(s) disponíveis`),
+      ),
+      h('div', { style: 'display:flex; align-items:center; gap:8px;' },
+        h('span', { style: 'font-size:12px; color:var(--text-muted);', text: 'Canal:' }),
+        renderSelectCanais(),
+        h('span', { style: 'font-size:12px; color:var(--text-muted);', text: 'Intervalo:' }),
+        inpIntervaloTT,
+        h('span', { style: 'font-size:12px; color:var(--text-muted);', text: 'min' }),
+        btnPublicarLoteTT,
+      ),
+    );
+
+    body.append(userTabs, bannerControlesTT, statusBanner, gridContainer);
+    atualizarGridTT();
 
     pollStatus(statusBanner);
     pollInterval = setInterval(() => pollStatus(statusBanner), 2500);
