@@ -3946,6 +3946,14 @@ O progresso poderá ser acompanhado no Publicador YouTube.`
         title: 'Baixar arquivo de vídeo .mp4',
       }, '📥 Baixar');
 
+      // Botão Traduzir / Dublar
+      const btnTraduzirIndividual = h('button', {
+        class: 'sc-btn sc-btn-sm',
+        style: 'background:#3b82f6; border-color:#3b82f6; color:#fff; display:flex; align-items:center; gap:4px; font-weight:600;',
+        title: 'Dublar e traduzir legendas deste vídeo com VoiceStudio / Voz Neural',
+        onclick: () => abrirModalTraduzirVideo(v),
+      }, '🌐 Traduzir');
+
       // Corpo do Card
       const body = h('div', { class: 'sc-clip-body' },
         h('div', { style: 'display:flex; align-items:flex-start; gap:8px;' },
@@ -3977,14 +3985,6 @@ O progresso poderá ser acompanhado no Publicador YouTube.`
           h('div', { style: 'font-size:11px; font-weight:700; color:var(--text-muted); margin-bottom:2px;' }, 'CONTA DESTINO:'),
           selContaCard,
         ),
-
-        // Botão Traduzir / Dublar
-        const btnTraduzirIndividual = h('button', {
-          class: 'sc-btn sc-btn-sm',
-          style: 'background:#3b82f6; border-color:#3b82f6; color:#fff; display:flex; align-items:center; gap:4px; font-weight:600;',
-          title: 'Dublar e traduzir legendas deste vídeo com VoiceStudio / Voz Neural',
-          onclick: () => abrirModalTraduzirVideo(v),
-        }, '🌐 Traduzir');
 
         h('div', { class: 'sc-clip-actions', style: 'margin-top:10px; display:flex; flex-wrap:wrap; gap:6px;' },
           btnGerarCapa,
