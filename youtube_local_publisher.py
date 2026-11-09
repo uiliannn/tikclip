@@ -432,6 +432,14 @@ def publish_video(
     if not v_path.is_file():
         raise FileNotFoundError(f"Arquivo de vídeo não encontrado: {video_path}")
 
+    def _prog(msg: str):
+        if progress:
+            try:
+                progress(msg)
+            except Exception:
+                pass
+        logger.info("[YouTube Publisher] %s", msg)
+
     # Se marcado como Shorts, verifica se o vídeo é horizontal.
     # O YouTube só aceita vídeos verticais (9:16) ou quadrados (1:1) como Shorts!
     # Se for horizontal (largura > altura), adaptamos automaticamente para 9:16 vertical com fundo desfocado.
@@ -446,14 +454,6 @@ def publish_video(
                 v_path = converted_path
 
     p_dir = profile_dir(account)
-
-    def _prog(msg: str):
-        if progress:
-            try:
-                progress(msg)
-            except Exception:
-                pass
-        logger.info("[YouTube Publisher] %s", msg)
 
     # 1. Tratamento e normalização das hashtags/tags
     clean_tags: list[str] = []
