@@ -1102,6 +1102,37 @@ def supo_publish_single_youtube(payload: dict[str, Any]) -> dict[str, Any]:
     is_short = bool(payload.get('is_short', False))
     account = payload.get('account_id') or 'default'
 
+    # Resolve automaticamente vídeos baixados do TikTok se vier folder/filename ou video_url
+    folder = payload.get('folder')
+    filename = payload.get('filename')
+    if (not video_path_str or not Path(str(video_path_str)).is_file()):
+        if folder and filename:
+            try:
+                import tiktok_library
+                cand = tiktok_library.TIKTOK_DOWNLOADS_DIR / folder / filename
+                if cand.is_file():
+                    video_path_str = str(cand)
+                if not thumbnail_path_str:
+                    for ext in ('.jpg', '.jpeg', '.webp', '.png'):
+                        c_cand = tiktok_library.TIKTOK_DOWNLOADS_DIR / folder / (Path(filename).stem.split('_')[0] + ext)
+                        if c_cand.is_file():
+                            thumbnail_path_str = str(c_cand)
+                            break
+            except Exception:
+                pass
+        elif payload.get('video_url'):
+            try:
+                import urllib.parse
+                import tiktok_library
+                url_p = payload['video_url'].split('/media/tiktok-downloads/')[-1]
+                parts = [urllib.parse.unquote(p) for p in url_p.split('/') if p]
+                if len(parts) >= 2:
+                    cand = tiktok_library.TIKTOK_DOWNLOADS_DIR / parts[0] / parts[1]
+                    if cand.is_file():
+                        video_path_str = str(cand)
+            except Exception:
+                pass
+
     if (not video_path_str) and project_id and variant_id:
         import api_ext
         state = api_ext._read_studio(project_id)
@@ -1222,7 +1253,33 @@ def supo_publish_batch_youtube(payload: dict[str, Any]) -> dict[str, Any]:
                 _YT_PUB['skip_wait'] = False
 
             v_path = it.get('video_path')
-            if not v_path or not Path(v_path).is_file():
+            if (not v_path or not Path(str(v_path)).is_file()):
+                # Tenta resolver por folder e filename
+                fld = it.get('folder')
+                fname = it.get('filename')
+                if fld and fname:
+                    try:
+                        import tiktok_library
+                        cand = tiktok_library.TIKTOK_DOWNLOADS_DIR / fld / fname
+                        if cand.is_file():
+                            v_path = str(cand)
+                    except Exception:
+                        pass
+                # Tenta resolver por video_url
+                if (not v_path or not Path(str(v_path)).is_file()) and it.get('video_url'):
+                    try:
+                        import urllib.parse
+                        import tiktok_library
+                        url_p = it['video_url'].split('/media/tiktok-downloads/')[-1]
+                        parts = [urllib.parse.unquote(p) for p in url_p.split('/') if p]
+                        if len(parts) >= 2:
+                            cand = tiktok_library.TIKTOK_DOWNLOADS_DIR / parts[0] / parts[1]
+                            if cand.is_file():
+                                v_path = str(cand)
+                    except Exception:
+                        pass
+
+            if not v_path or not Path(str(v_path)).is_file():
                 _yt_pub_log(f'[{idx}/{total}] Vídeo não encontrado no caminho: {v_path}')
                 continue
 

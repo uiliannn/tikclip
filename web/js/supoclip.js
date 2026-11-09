@@ -2124,7 +2124,10 @@ O progresso será exibido na aba de Fila.`
 
         try {
           const itemsPayload = itens.map((v) => ({
-            video_path: v.video_path,
+            video_path: v.video_path || null,
+            video_url: v.video_url || null,
+            folder: v.folder,
+            filename: v.filename,
             title: v.title,
             description: v.description || v.title,
             tags: v.hashtags || [],
@@ -2236,7 +2239,10 @@ O progresso será exibido na aba de Fila.`
                       method: 'POST',
                       body: JSON.stringify({
                         account_id: targetYt,
-                        video_path: v.video_path,
+                        video_path: v.video_path || null,
+                        video_url: v.video_url || null,
+                        folder: v.folder,
+                        filename: v.filename,
                         title: v.title,
                         description: txtDescricao.value,
                         tags: v.hashtags || [],
@@ -3688,7 +3694,10 @@ O progresso poderá ser acompanhado no Publicador YouTube.`
 
       try {
         const itemsPayload = itens.map((v) => ({
-          video_path: v.video_path,
+          video_path: v.video_path || null,
+          video_url: v.video_url || null,
+          folder: v.folder,
+          filename: v.filename,
           title: v.title,
           description: v.description || v.title,
           tags: v.hashtags || [],
@@ -3904,7 +3913,10 @@ O progresso poderá ser acompanhado no Publicador YouTube.`
             await apiSupo('/youtube-publisher/publish-single', {
               method: 'POST',
               body: JSON.stringify({
-                video_path: v.video_path,
+                video_path: v.video_path || null,
+                video_url: v.video_url || null,
+                folder: v.folder,
+                filename: v.filename,
                 title: v.title,
                 description: txtDescricao.value,
                 tags: v.hashtags || [],
