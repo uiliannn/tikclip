@@ -3028,6 +3028,11 @@ async function renderTikTokCreatorsList(container) {
       h('p', { class: 'sc-page-desc' }, 'Canais baixados do TikTok. Visualize os vídeos nos mesmos cards com legendas originais do .info.txt e publique em suas contas.'),
     ),
     h('div', { style: 'display:flex; align-items:center; gap:10px;' },
+      h('button', {
+        class: 'sc-btn sc-btn-sm',
+        style: 'display:flex; align-items:center; gap:6px; background:rgba(239,68,68,0.1); border-color:#ef4444; color:#ef4444; font-weight:600;',
+        onclick: () => navegar('youtube_publisher'),
+      }, '🔴 Ir para Publicador YouTube'),
       btnAtualizar,
     ),
   );
@@ -3329,10 +3334,65 @@ async function renderTikTokCreatorVideos(container, folder) {
     },
   }, `🚀 Publicar Selecionados (${state.selectedTikTokVideos.size})`);
 
+  const btnPublicarLoteYouTube = h('button', {
+    class: 'sc-btn sc-btn-sm',
+    style: 'background:#ef4444; border-color:#ef4444; color:#fff; display:flex; align-items:center; gap:5px; font-weight:600;',
+    disabled: state.selectedTikTokVideos.size === 0,
+    onclick: async () => {
+      const itens = videos.filter((v) => state.selectedTikTokVideos.has(v.filename));
+      if (!itens.length) {
+        toast('Selecione ao menos um vídeo para enviar para o YouTube.');
+        return;
+      }
+      const targetYt = state.activeYtAccount || 'default';
+      const canalObj = (state.ytAccounts || []).find((a) => a.id === targetYt) || { name: 'Canal Principal' };
+      const intervalMin = parseInt(inputIntervalo.value, 10) || 10;
+
+      const conf = confirm(
+        `Deseja enviar ${itens.length} vídeo(s) como YouTube Shorts no canal "${canalObj.name}" com intervalo de ${intervalMin} min?
+
+O progresso poderá ser acompanhado no Publicador YouTube.`
+      );
+      if (!conf) return;
+
+      btnPublicarLoteYouTube.disabled = true;
+      btnPublicarLoteYouTube.textContent = '🔴 Enfileirando...';
+
+      try {
+        const itemsPayload = itens.map((v) => ({
+          video_path: v.video_path,
+          title: v.title,
+          description: v.description || v.title,
+          tags: v.hashtags || [],
+          thumbnail_path: v.cover_path || null,
+          is_short: true,
+        }));
+
+        await apiSupo('/youtube-publisher/publish-batch', {
+          method: 'POST',
+          body: JSON.stringify({
+            items: itemsPayload,
+            account_id: targetYt,
+            interval_min: intervalMin,
+            visibility: 'public',
+          }),
+        });
+        toast(`Fila iniciada com ${itens.length} Shorts no YouTube!`);
+        navegar('youtube_publisher');
+      } catch (err) {
+        toast('Erro ao iniciar fila no YouTube: ' + err.message);
+        btnPublicarLoteYouTube.disabled = false;
+        btnPublicarLoteYouTube.textContent = `🔴 Publicar no YouTube (${state.selectedTikTokVideos.size})`;
+      }
+    },
+  }, `🔴 Publicar no YouTube (${state.selectedTikTokVideos.size})`);
+
   function atualizarContadorSelecao() {
     badgeSelecao.textContent = `${state.selectedTikTokVideos.size} selecionados`;
     btnPublicarLote.disabled = state.selectedTikTokVideos.size === 0;
-    btnPublicarLote.textContent = `🚀 Publicar Selecionados (${state.selectedTikTokVideos.size})`;
+    btnPublicarLote.textContent = `🚀 TikTok (${state.selectedTikTokVideos.size})`;
+    btnPublicarLoteYouTube.disabled = state.selectedTikTokVideos.size === 0;
+    btnPublicarLoteYouTube.textContent = `🔴 YouTube (${state.selectedTikTokVideos.size})`;
     chkSelecionarTodos.checked = state.selectedTikTokVideos.size > 0 && state.selectedTikTokVideos.size === videos.length;
   }
 
@@ -3344,15 +3404,16 @@ async function renderTikTokCreatorVideos(container, folder) {
       lblSelecao,
       badgeSelecao,
     ),
-    h('div', { style: 'display:flex; align-items:center; gap:12px; flex-wrap:wrap;' },
-      h('span', { style: 'font-size:12.5px; color:var(--text-muted); font-weight:600;' }, 'Publicar na:'),
+    h('div', { style: 'display:flex; align-items:center; gap:10px; flex-wrap:wrap;' },
+      h('span', { style: 'font-size:12px; color:var(--text-muted); font-weight:600;' }, 'TikTok:'),
       selContaGlobal,
       h('div', { style: 'display:flex; align-items:center; gap:6px;' },
-        h('span', { style: 'font-size:12.5px; color:var(--text-muted);' }, 'Intervalo:'),
+        h('span', { style: 'font-size:12px; color:var(--text-muted);' }, 'Intervalo:'),
         inputIntervalo,
-        h('span', { style: 'font-size:12.5px; color:var(--text-muted);' }, 'min'),
+        h('span', { style: 'font-size:12px; color:var(--text-muted);' }, 'min'),
       ),
       btnPublicarLote,
+      btnPublicarLoteYouTube,
     ),
   );
 
@@ -3496,6 +3557,45 @@ async function renderTikTokCreatorVideos(container, folder) {
         },
       }, '📋 Copiar');
 
+            // Botão Publicar no YouTube Shorts
+      const btnPublicarYouTubeIndividual = h('button', {
+        class: 'sc-btn sc-btn-sm',
+        style: 'background:#ef4444; border-color:#ef4444; color:#fff; display:flex; align-items:center; gap:4px; font-weight:600;',
+        title: 'Publicar este vídeo como Shorts no YouTube Studio',
+        onclick: async () => {
+          const targetYt = state.activeYtAccount || 'default';
+          const canalObj = (state.ytAccounts || []).find((a) => a.id === targetYt) || { name: 'Canal Principal' };
+          const conf = confirm(`Publicar "${v.title}" como Shorts no YouTube (${canalObj.name})?`);
+          if (!conf) return;
+
+          btnPublicarYouTubeIndividual.disabled = true;
+          btnPublicarYouTubeIndividual.textContent = '🔴 Enviando...';
+
+          try {
+            toast(`Enviando vídeo para o YouTube (${canalObj.name})...`);
+            await apiSupo('/youtube-publisher/publish-single', {
+              method: 'POST',
+              body: JSON.stringify({
+                video_path: v.video_path,
+                title: v.title,
+                description: txtDescricao.value,
+                tags: v.hashtags || [],
+                thumbnail_path: v.cover_path || null,
+                is_short: true,
+                account_id: targetYt,
+                visibility: 'public',
+              }),
+            });
+            toast('Envio para o YouTube iniciado com sucesso!');
+            navegar('youtube_publisher');
+          } catch (err) {
+            toast('Erro ao enviar para o YouTube: ' + err.message);
+            btnPublicarYouTubeIndividual.disabled = false;
+            btnPublicarYouTubeIndividual.textContent = '🔴 YouTube';
+          }
+        },
+      }, '🔴 YouTube');
+
       // Link para download local
       const linkBaixar = h('a', {
         class: 'sc-btn sc-btn-sm',
@@ -3537,11 +3637,12 @@ async function renderTikTokCreatorVideos(container, folder) {
           selContaCard,
         ),
 
-        h('div', { class: 'sc-clip-actions', style: 'margin-top:10px;' },
+        h('div', { class: 'sc-clip-actions', style: 'margin-top:10px; display:flex; flex-wrap:wrap; gap:6px;' },
           btnGerarCapa,
           btnCopiar,
           linkBaixar,
           btnPublicarIndividual,
+          btnPublicarYouTubeIndividual,
         ),
       );
 

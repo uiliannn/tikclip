@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import json
 import os
-import shutil
 import re
 import subprocess
 import threading
@@ -19,20 +18,8 @@ from pathlib import Path
 from typing import Any, Callable, Optional
 
 # Diretório base dos downloads do projeto tiktok-downloader-web
-def _get_tiktok_downloads_dir() -> Path:
-    raw = os.getenv("TIKTOK_DOWNLOADS_DIR")
-    if raw:
-        return Path(raw)
-    return _data_dir() / "tiktok_downloads"
-
-def _get_tiktok_channels_json() -> Path:
-    raw = os.getenv("TIKTOK_CHANNELS_JSON")
-    if raw:
-        return Path(raw)
-    return _data_dir() / "tiktok_channels.json"
-
-TIKTOK_DOWNLOADS_DIR = _get_tiktok_downloads_dir()
-TIKTOK_CHANNELS_JSON = _get_tiktok_channels_json()
+TIKTOK_DOWNLOADS_DIR = Path(r"C:\Users\Uilian\.gemini\antigravity\scratch\tiktok-downloader-web\downloads")
+TIKTOK_CHANNELS_JSON = Path(r"C:\Users\Uilian\.gemini\antigravity\scratch\tiktok-downloader-web\channels.json")
 
 
 def _data_dir() -> Path:
@@ -284,17 +271,21 @@ def list_creator_videos(folder_name: str) -> list[dict[str, Any]]:
         video_url = f'/media/tiktok-downloads/{encoded_folder}/{encoded_file}'
 
         cover_url = None
+        cover_path = None
         for ext in ('.jpg', '.jpeg', '.webp', '.png'):
             cands = list(creator_dir.glob(f'{vid_id}*{ext}'))
             if cands:
                 cover_url = f'/media/tiktok-downloads/{encoded_folder}/{urllib.parse.quote(cands[0].name)}'
+                cover_path = str(cands[0].resolve())
                 break
 
         videos.append({
             'id': vid_id,
             'folder': creator_dir.name,
             'filename': mp4.name,
+            'video_path': str(mp4.resolve()),
             'video_url': video_url,
+            'cover_path': cover_path,
             'cover_url': cover_url,
             'title': title,
             'raw_title': raw_title,
@@ -323,7 +314,7 @@ def extract_video_cover(video_path: Path, second: float = 1.5) -> Path | None:
 
     ffmpeg_bin = os.environ.get('TIKCLIP_FFMPEG_PATH')
     if not ffmpeg_bin or not Path(ffmpeg_bin).is_file():
-        cand = Path()
+        cand = Path(r'C:\Users\Uilian\Desktop\tikclip-studio\runtime\ffmpeg\ffmpeg.exe')
         if cand.is_file():
             ffmpeg_bin = str(cand)
         else:
