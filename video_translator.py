@@ -79,19 +79,44 @@ def is_voicestudio_online() -> bool:
 def list_available_voices() -> list[dict[str, Any]]:
     """Lista vozes disponíveis para dublagem em português."""
     voices = []
-    # 1. VoiceStudio
     vs_online = is_voicestudio_online()
-    voices.append({
-        "id": "voicestudio",
-        "name": "VoiceStudio (Local OmniVoice)",
-        "engine": "voicestudio",
-        "gender": "Customizável",
-        "description": "Motor local do VoiceStudio na porta 3900",
-        "available": vs_online,
-        "is_default": vs_online,
-    })
+
+    # 1. Carrega Perfis Clonados do VoiceStudio se estiver online
+    if vs_online:
+        try:
+            base_url = VOICESTUDIO_URL.split("/v1/")[0]
+            req = urllib.request.Request(f"{base_url}/profiles", headers={"User-Agent": "TikClip"})
+            with urllib.request.urlopen(req, timeout=3.0) as resp:
+                profiles = json.loads(resp.read().decode("utf-8"))
+                for p in profiles:
+                    p_id = str(p.get("id") or "")
+                    p_name = str(p.get("name") or p_id)
+                    p_kind = str(p.get("kind") or "clone").capitalize()
+                    is_dj = p_name.lower() == "davyjones" or p_id == "503713f9"
+                    voices.append({
+                        "id": f"vs:{p_id}",
+                        "name": f"{p_name} (VoiceStudio {p_kind})",
+                        "engine": "voicestudio",
+                        "voice_profile_id": p_id,
+                        "gender": "Customizável",
+                        "description": f"Voz clonada/sintetizada no VoiceStudio ({p_name})",
+                        "available": True,
+                        "is_default": is_dj,
+                    })
+        except Exception as exc:
+            logger.warning("Falha ao carregar perfis do VoiceStudio: %s", exc)
+            voices.append({
+                "id": "voicestudio",
+                "name": "VoiceStudio (Local OmniVoice)",
+                "engine": "voicestudio",
+                "gender": "Customizável",
+                "description": "Motor local do VoiceStudio na porta 3900",
+                "available": True,
+                "is_default": True,
+            })
 
     # 2. Vozes Neurais Brasileiras (Microsoft / Edge-TTS)
+    has_dj_default = any(v.get("is_default") for v in voices)
     voices.extend([
         {
             "id": "pt-BR-AntonioNeural",
@@ -100,7 +125,7 @@ def list_available_voices() -> list[dict[str, Any]]:
             "gender": "Masculino",
             "description": "Voz masculina dinâmica e enérgica, ideal para cortes e games",
             "available": True,
-            "is_default": not vs_online,
+            "is_default": not vs_online and not has_dj_default,
         },
         {
             "id": "pt-BR-FranciscaNeural",
@@ -164,13 +189,14 @@ def translate_text(text: str) -> str:
 
 def _generate_audio_segment(text: str, output_path: Path, voice_id: str) -> Path:
     """Gera o arquivo de áudio de uma frase usando VoiceStudio ou Edge-TTS."""
-    # Se for VoiceStudio
-    if voice_id == "voicestudio" and is_voicestudio_online():
+    # Se for VoiceStudio (perfil clonado específico ou padrão)
+    if (voice_id.startswith("vs:") or voice_id == "voicestudio") and is_voicestudio_online():
         try:
+            profile_id = voice_id.split("vs:")[1] if voice_id.startswith("vs:") else "default"
             body = {
                 "model": "omnivoice",
                 "input": text,
-                "voice": "default",
+                "voice": profile_id,
                 "response_format": "wav",
             }
             req = urllib.request.Request(
@@ -185,7 +211,7 @@ def _generate_audio_segment(text: str, output_path: Path, voice_id: str) -> Path
                 output_path.write_bytes(data)
                 return output_path
         except Exception as exc:
-            logger.warning("VoiceStudio falhou, usando voz neural alternativa: %s", exc)
+            logger.warning("VoiceStudio (%s) falhou, usando voz neural alternativa: %s", voice_id, exc)
 
     # Edge-TTS (Garantido e 100% gratuito)
     import edge_tts
@@ -199,11 +225,53 @@ def _generate_audio_segment(text: str, output_path: Path, voice_id: str) -> Path
     return output_path
 
 
+def _build_subtitle_filter(
+    srt_file: Path,
+    style: str = "tiktok_yellow",
+    size: str = "medium",
+    position: str = "bottom",
+) -> str:
+    """Monta a string de filtro de legendas do FFmpeg com estilo personalizável."""
+    srt_escaped = str(srt_file).replace("\\", "/").replace(":", "\\:")
+
+    sizes = {
+        "small": 18,
+        "medium": 24,
+        "large": 30,
+        "xlarge": 38,
+    }
+    font_size = sizes.get(size, 24)
+
+    positions = {
+        "bottom": "Alignment=2,MarginV=70",
+        "center": "Alignment=10,MarginV=10",
+        "top": "Alignment=6,MarginV=75",
+    }
+    pos_style = positions.get(position, "Alignment=2,MarginV=70")
+
+    # Formato ASS: &HAABBGGRR
+    styles = {
+        "tiktok_yellow": "PrimaryColour=&H0000FFFF,OutlineColour=&H00000000,BorderStyle=1,Outline=3,Shadow=1.2,Bold=1",
+        "classic_white": "PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BorderStyle=1,Outline=2.5,Shadow=1.0,Bold=1",
+        "neon_green": "PrimaryColour=&H0039FF14,OutlineColour=&H00000000,BorderStyle=1,Outline=3,Shadow=1.2,Bold=1",
+        "gamer_red": "PrimaryColour=&H002222FF,OutlineColour=&H00000000,BorderStyle=1,Outline=3,Shadow=1.2,Bold=1",
+        "cyan_future": "PrimaryColour=&H00FFFF00,OutlineColour=&H00000000,BorderStyle=1,Outline=2.8,Shadow=1.2,Bold=1",
+        "boxed_black": "PrimaryColour=&H00FFFFFF,BackColour=&H80000000,BorderStyle=3,Outline=0,Shadow=0,Bold=1",
+    }
+    color_style = styles.get(style, styles["tiktok_yellow"])
+
+    return f"subtitles='{srt_escaped}':force_style='FontSize={font_size},{color_style},{pos_style}'"
+
+
 def dub_and_translate_video(
     video_path: Path | str,
     voice_id: str = "pt-BR-AntonioNeural",
     ducking_volume: float = 0.15,
     burn_subtitles: bool = True,
+    subtitle_style: str = "tiktok_yellow",
+    subtitle_size: str = "medium",
+    subtitle_position: str = "bottom",
+    subtitle_uppercase: bool = False,
     custom_title: str | None = None,
     progress_callback: Callable[[int, str], None] | None = None,
 ) -> dict[str, Any]:
@@ -320,10 +388,12 @@ def dub_and_translate_video(
                     s = int(t % 60)
                     ms = int((t - int(t)) * 1000)
                     return f"{h:02d}:{m:02d}:{s:02d},{ms:03d}"
-                f.write(f"{item['id']+1}\n{_fmt(item['start'])} --> {_fmt(item['end'])}\n{item['trans']}\n\n")
+                text_sub = item["trans"].upper() if subtitle_uppercase else item["trans"]
+                f.write(f"{item['id']+1}\n{_fmt(item['start'])} --> {_fmt(item['end'])}\n{text_sub}\n\n")
 
         # 6. Renderização do vídeo final
-        _prog(85, "6/6 Renderizando vídeo final com voz dublada e legendas...")
+        msg_sub = "com voz dublada e legendas customizadas..." if burn_subtitles else "com voz dublada (sem legendas)..."
+        _prog(85, f"6/6 Renderizando vídeo final {msg_sub}")
         dest_filename = f"dublado_{v_path.stem}.mp4"
         dest_video = DUBLADOS_DIR / dest_filename
 
@@ -334,9 +404,12 @@ def dub_and_translate_video(
         ]
 
         if burn_subtitles:
-            srt_escaped = str(srt_file).replace("\\", "/").replace(":", "\\:")
-            # Estilo clássico TikTok / Shorts: texto branco com borda preta sólida, centralizado embaixo
-            vf = f"subtitles='{srt_escaped}':force_style='FontSize=20,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BorderStyle=3,Outline=2,Shadow=1,MarginV=60,Alignment=2'"
+            vf = _build_subtitle_filter(
+                srt_file=srt_file,
+                style=subtitle_style,
+                size=subtitle_size,
+                position=subtitle_position,
+            )
             cmd_final += ["-vf", vf]
 
         cmd_final += [

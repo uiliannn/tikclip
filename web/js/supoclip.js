@@ -5162,12 +5162,93 @@ async function abrirModalTraduzirVideo(v) {
     h('option', { value: '0.30', text: '🔊 Ducking Alto (Voz original 30% ao fundo + Voz Dublada)' })
   );
 
-  const chkSubtitles = h('input', {
+  let subtitlesEnabled = true;
+
+  const btnToggleLegendas = h('button', {
+    type: 'button',
+    class: 'sc-btn sc-btn-sm',
+    style: 'background:rgba(34,197,94,0.15); border:1px solid #22c55e; color:#15803d; font-weight:700; border-radius:6px; padding:7px 14px; cursor:pointer; display:flex; align-items:center; gap:8px;'
+  }, '📝 Legendas: ATIVADAS (Clique p/ Desativar)');
+
+  const selSubStyle = h('select', {
+    class: 'sc-select',
+    style: 'width:100%; font-size:12px; padding:6px 8px;'
+  },
+    h('option', { value: 'tiktok_yellow', selected: true, text: '🟡 Amarelo Viral (TikTok / Shorts)' }),
+    h('option', { value: 'classic_white', text: '⚪ Branco com Borda Preta (Clássico)' }),
+    h('option', { value: 'neon_green', text: '🟢 Verde Neon (Gamer / Tech)' }),
+    h('option', { value: 'gamer_red', text: '🔴 Vermelho Impacto' }),
+    h('option', { value: 'cyan_future', text: '🔷 Ciano / Azul Elétrico' }),
+    h('option', { value: 'boxed_black', text: '⬛ Fundo Preto Box (Legibilidade Máxima)' })
+  );
+
+  const selSubSize = h('select', {
+    class: 'sc-select',
+    style: 'width:100%; font-size:12px; padding:6px 8px;'
+  },
+    h('option', { value: 'small', text: 'Pequeno (18px)' }),
+    h('option', { value: 'medium', selected: true, text: 'Médio (24px - Padrão)' }),
+    h('option', { value: 'large', text: 'Grande (30px)' }),
+    h('option', { value: 'xlarge', text: 'Extra Grande (38px)' })
+  );
+
+  const selSubPosition = h('select', {
+    class: 'sc-select',
+    style: 'width:100%; font-size:12px; padding:6px 8px;'
+  },
+    h('option', { value: 'bottom', selected: true, text: '⬇️ Inferior (Base da Tela)' }),
+    h('option', { value: 'center', text: '⏹️ Centro (Meio da Tela)' }),
+    h('option', { value: 'top', text: '⬆️ Superior (Topo da Tela)' })
+  );
+
+  const chkSubUpper = h('input', {
     type: 'checkbox',
-    id: 'chk-burn-sub',
-    checked: true,
-    style: 'cursor:pointer; width:18px; height:18px;'
+    id: 'chk-sub-upper',
+    style: 'cursor:pointer; width:16px; height:16px;'
   });
+
+  const subOptionsPanel = h('div', {
+    id: 'sub-options-panel',
+    style: 'margin-top:6px; padding:10px; background:rgba(0,0,0,0.03); border:1px solid rgba(0,0,0,0.08); border-radius:8px; display:flex; flex-direction:column; gap:8px;'
+  },
+    h('div', { style: 'display:grid; grid-template-columns:1fr 1fr; gap:8px;' },
+      h('div', null,
+        h('label', { style: 'font-size:10.5px; font-weight:700; color:var(--text-muted); display:block; margin-bottom:2px;' }, '🎨 ESTILO & COR:'),
+        selSubStyle
+      ),
+      h('div', null,
+        h('label', { style: 'font-size:10.5px; font-weight:700; color:var(--text-muted); display:block; margin-bottom:2px;' }, '📏 TAMANHO DA FONTE:'),
+        selSubSize
+      )
+    ),
+    h('div', { style: 'display:grid; grid-template-columns:1fr 1fr; gap:8px;' },
+      h('div', null,
+        h('label', { style: 'font-size:10.5px; font-weight:700; color:var(--text-muted); display:block; margin-bottom:2px;' }, '📍 POSIÇÃO:'),
+        selSubPosition
+      ),
+      h('div', { style: 'display:flex; align-items:center; gap:8px; margin-top:16px;' },
+        chkSubUpper,
+        h('label', { for: 'chk-sub-upper', style: 'font-size:11.5px; font-weight:600; cursor:pointer;' }, '🔠 MAIÚSCULAS')
+      )
+    )
+  );
+
+  btnToggleLegendas.onclick = () => {
+    subtitlesEnabled = !subtitlesEnabled;
+    if (subtitlesEnabled) {
+      btnToggleLegendas.textContent = '📝 Legendas: ATIVADAS (Clique p/ Desativar)';
+      btnToggleLegendas.style.background = 'rgba(34,197,94,0.15)';
+      btnToggleLegendas.style.borderColor = '#22c55e';
+      btnToggleLegendas.style.color = '#15803d';
+      subOptionsPanel.style.display = 'flex';
+    } else {
+      btnToggleLegendas.textContent = '🚫 Legendas: DESATIVADAS (Vídeo sem Legendas)';
+      btnToggleLegendas.style.background = 'rgba(239,68,68,0.1)';
+      btnToggleLegendas.style.borderColor = '#ef4444';
+      btnToggleLegendas.style.color = '#dc2626';
+      subOptionsPanel.style.display = 'none';
+    }
+  };
 
   const txtCustomTitle = h('input', {
     type: 'text',
@@ -5213,7 +5294,11 @@ async function abrirModalTraduzirVideo(v) {
             filename: v.filename,
             voice_id: selVoice.value,
             ducking_volume: parseFloat(selDucking.value) || 0.15,
-            burn_subtitles: chkSubtitles.checked,
+            burn_subtitles: subtitlesEnabled,
+            subtitle_style: selSubStyle.value,
+            subtitle_size: selSubSize.value,
+            subtitle_position: selSubPosition.value,
+            subtitle_uppercase: chkSubUpper.checked,
             title: txtCustomTitle.value.trim() || v.title,
           }),
         });
@@ -5296,11 +5381,12 @@ async function abrirModalTraduzirVideo(v) {
           h('label', { style: 'font-size:11px; font-weight:700; color:var(--text-muted); display:block; margin-bottom:4px;' }, '🎚️ TRILHA SONORA DE FUNDO (DUCKING):'),
           selDucking
         ),
-        h('div', { style: 'display:flex; align-items:center; gap:10px; margin-top:2px;' },
-          chkSubtitles,
-          h('label', { for: 'chk-burn-sub', style: 'font-size:13px; font-weight:600; cursor:pointer;' },
-            '📝 Queimar legendas traduzidas em português no vídeo'
-          )
+        h('div', { style: 'margin-top:4px;' },
+          h('div', { style: 'display:flex; align-items:center; justify-content:space-between; margin-bottom:4px;' },
+            h('label', { style: 'font-size:11px; font-weight:700; color:var(--text-muted);' }, '📝 LEGENDAS NO VÍDEO:'),
+            btnToggleLegendas
+          ),
+          subOptionsPanel
         )
       )
     ),

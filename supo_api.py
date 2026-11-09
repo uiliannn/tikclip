@@ -1445,6 +1445,10 @@ def supo_translator_start(payload: dict[str, Any]) -> dict[str, Any]:
     voice_id = payload.get('voice_id') or 'pt-BR-AntonioNeural'
     ducking_volume = float(payload.get('ducking_volume', 0.15))
     burn_subtitles = bool(payload.get('burn_subtitles', True))
+    subtitle_style = str(payload.get('subtitle_style') or 'tiktok_yellow')
+    subtitle_size = str(payload.get('subtitle_size') or 'medium')
+    subtitle_position = str(payload.get('subtitle_position') or 'bottom')
+    subtitle_uppercase = bool(payload.get('subtitle_uppercase', False))
     custom_title = payload.get('title')
 
     def _worker():
@@ -1454,6 +1458,10 @@ def supo_translator_start(payload: dict[str, Any]) -> dict[str, Any]:
                 voice_id=voice_id,
                 ducking_volume=ducking_volume,
                 burn_subtitles=burn_subtitles,
+                subtitle_style=subtitle_style,
+                subtitle_size=subtitle_size,
+                subtitle_position=subtitle_position,
+                subtitle_uppercase=subtitle_uppercase,
                 custom_title=custom_title,
             )
         except Exception:
