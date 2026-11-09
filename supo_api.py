@@ -1397,3 +1397,69 @@ def supo_get_youtube_library_clips() -> dict[str, Any]:
             except Exception:
                 continue
     return {'ok': True, 'clips': all_clips, 'total': len(all_clips)}
+
+# ------------------------------------------------------------------
+# TRADUTOR & DUBLADOR DE VÍDEOS
+# ------------------------------------------------------------------
+import video_translator
+
+@router.get('/translator/voices')
+def supo_translator_voices() -> dict[str, Any]:
+    """Retorna a lista de vozes disponíveis para dublagem em português."""
+    return {'ok': True, 'voices': video_translator.list_available_voices()}
+
+
+@router.get('/translator/status')
+def supo_translator_status() -> dict[str, Any]:
+    """Retorna o status atual do processo de dublagem."""
+    return {'ok': True, 'job': video_translator.get_current_job_status()}
+
+
+@router.get('/translator/dubbed')
+def supo_translator_dubbed() -> dict[str, Any]:
+    """Lista todos os vídeos que já foram dublados e traduzidos."""
+    vids = video_translator.list_dubbed_videos()
+    return {'ok': True, 'videos': vids, 'total': len(vids)}
+
+
+@router.post('/translator/start')
+def supo_translator_start(payload: dict[str, Any]) -> dict[str, Any]:
+    """Inicia a dublagem e tradução de um vídeo em segundo plano."""
+    current = video_translator.get_current_job_status()
+    if current.get('running'):
+        raise HTTPException(status_code=400, detail='Já existe uma dublagem em andamento.')
+
+    video_path = payload.get('video_path')
+    if not video_path:
+        # Tenta resolver via folder + filename
+        folder = payload.get('folder')
+        filename = payload.get('filename')
+        if folder and filename:
+            cand = video_translator.TIKTOK_DOWNLOADS_DIR / folder / filename
+            if cand.is_file():
+                video_path = str(cand)
+
+    if not video_path or not Path(video_path).is_file():
+        raise HTTPException(status_code=404, detail=f'Arquivo de vídeo não encontrado: {video_path}')
+
+    voice_id = payload.get('voice_id') or 'pt-BR-AntonioNeural'
+    ducking_volume = float(payload.get('ducking_volume', 0.15))
+    burn_subtitles = bool(payload.get('burn_subtitles', True))
+    custom_title = payload.get('title')
+
+    def _worker():
+        try:
+            video_translator.dub_and_translate_video(
+                video_path=video_path,
+                voice_id=voice_id,
+                ducking_volume=ducking_volume,
+                burn_subtitles=burn_subtitles,
+                custom_title=custom_title,
+            )
+        except Exception:
+            pass
+
+    t = threading.Thread(target=_worker, daemon=True)
+    t.start()
+
+    return {'ok': True, 'message': 'Processo de dublagem e tradução iniciado em segundo plano.'}

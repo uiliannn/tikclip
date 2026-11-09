@@ -245,6 +245,7 @@ function navegar(novaView, pid = null) {
   else if (novaView === 'tiktok_downloads') renderTikTokDownloads(main);
   else if (novaView === 'estudio') renderEstudio(main);
   else if (novaView === 'agentes') renderAgentes(main);
+  else if (novaView === 'tradutor') renderTradutor(main);
   else if (novaView === 'configuracoes') renderConfiguracoes(main);
 }
 
@@ -3977,10 +3978,19 @@ O progresso poderá ser acompanhado no Publicador YouTube.`
           selContaCard,
         ),
 
+        // Botão Traduzir / Dublar
+        const btnTraduzirIndividual = h('button', {
+          class: 'sc-btn sc-btn-sm',
+          style: 'background:#3b82f6; border-color:#3b82f6; color:#fff; display:flex; align-items:center; gap:4px; font-weight:600;',
+          title: 'Dublar e traduzir legendas deste vídeo com VoiceStudio / Voz Neural',
+          onclick: () => abrirModalTraduzirVideo(v),
+        }, '🌐 Traduzir');
+
         h('div', { class: 'sc-clip-actions', style: 'margin-top:10px; display:flex; flex-wrap:wrap; gap:6px;' },
           btnGerarCapa,
           btnCopiar,
           linkBaixar,
+          btnTraduzirIndividual,
           btnPublicarIndividual,
           btnPublicarYouTubeIndividual,
         ),
@@ -4897,3 +4907,492 @@ window.addEventListener('DOMContentLoaded', async () => {
   await carregarEstadoInicial();
   navegar('criar');
 });
+
+/* ==========================================================================
+   VIEW 10: TRADUTOR & DUBLADOR DE VÍDEOS COM VOICESTUDIO E LEGENDAS
+   ========================================================================== */
+async function renderTradutor(container) {
+  container.replaceChildren();
+
+  const head = h('div', { class: 'sc-view-head' },
+    h('div', null,
+      h('h1', { class: 'sc-view-title', style: 'display:flex; align-items:center; gap:8px;' },
+        '🌐 Tradutor & Dublador de Vídeos',
+        h('span', { class: 'sc-pill-status', style: 'font-size:12px; background:rgba(59,130,246,0.15); color:#60a5fa;' }, 'VoiceStudio + Whisper')
+      ),
+      h('p', { class: 'sc-view-desc' },
+        'Transcreva qualquer vídeo em inglês ou outro idioma, traduza e gere a fala natural em Português com legendas dinâmicas estilo TikTok/Shorts.'
+      ),
+    ),
+    h('div', { style: 'display:flex; gap:10px;' },
+      h('button', {
+        class: 'sc-btn',
+        onclick: () => renderTradutor(container),
+      }, '🔄 Atualizar Lista'),
+      h('button', {
+        class: 'sc-btn sc-btn-primary',
+        onclick: () => navegar('tiktok_downloads'),
+      }, '📥 Ver Vídeos Baixados'),
+    )
+  );
+
+  // Status de Vozes e VoiceStudio
+  let voices = [];
+  let isVsOnline = false;
+  try {
+    const vData = await apiSupo('/translator/voices');
+    voices = vData.voices || [];
+    isVsOnline = voices.some(v => v.engine === 'voicestudio' && v.available);
+  } catch (e) {
+    console.warn(e);
+  }
+
+  // Cards de status do topo
+  const statusBar = h('div', {
+    class: 'sc-card',
+    style: 'display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:16px; padding:16px 20px; margin-bottom:24px; border-left:4px solid #3b82f6;'
+  },
+    h('div', { style: 'display:flex; align-items:center; gap:12px;' },
+      h('div', { style: 'width:42px; height:42px; border-radius:10px; background:rgba(59,130,246,0.15); display:flex; align-items:center; justify-content:center; font-size:22px;' }, '🎙️'),
+      h('div', null,
+        h('div', { style: 'font-weight:700; font-size:14px;' },
+          'Motor de Voz: ',
+          h('span', { style: isVsOnline ? 'color:#22c55e;' : 'color:#3b82f6;' },
+            isVsOnline ? 'VoiceStudio Online (Porta 3900)' : 'Vozes Neurais Brasileiras Ativas (Microsoft Edge-TTS)'
+          )
+        ),
+        h('div', { style: 'font-size:12px; color:var(--text-muted);' },
+          isVsOnline
+            ? 'VoiceStudio conectado e pronto para clonagem e síntese local.'
+            : 'VoiceStudio em espera — utilizando vozes brasileiras hiper-realistas (Antonio, Francisca, Thalita).'
+        )
+      )
+    ),
+    h('div', { style: 'display:flex; gap:8px;' },
+      ...voices.map(vc => h('span', {
+        class: 'sc-pill-status',
+        style: vc.available ? 'background:rgba(34,197,94,0.12); color:#22c55e;' : 'opacity:0.6;'
+      }, `${vc.name.split(' ')[0]} ${vc.available ? '✔' : ''}`))
+    )
+  );
+
+  // Lista de Vídeos Já Dublados
+  let dubbedVideos = [];
+  try {
+    const dData = await apiSupo('/translator/dubbed');
+    dubbedVideos = dData.videos || [];
+  } catch (e) {
+    console.warn(e);
+  }
+
+  const dubbedSection = h('div', { style: 'margin-bottom:32px;' },
+    h('h2', { style: 'font-size:16px; font-weight:700; margin-bottom:14px; display:flex; align-items:center; gap:8px;' },
+      '🎬 Vídeos Prontos Traduzidos & Dublados',
+      h('span', { class: 'sc-badge-count', style: 'display:inline-block;' }, String(dubbedVideos.length))
+    )
+  );
+
+  if (dubbedVideos.length === 0) {
+    dubbedSection.append(
+      h('div', { class: 'sc-card', style: 'padding:32px; text-align:center; color:var(--text-muted);' },
+        'Nenhum vídeo dublado ainda. Selecione um vídeo baixado do TikTok abaixo para traduzir e dublar!'
+      )
+    );
+  } else {
+    const dubbedGrid = h('div', { class: 'sc-clip-grid' });
+    for (const dv of dubbedVideos) {
+      const vidEl = h('video', {
+        src: dv.video_url,
+        controls: true,
+        poster: dv.cover_url || '',
+        preload: 'metadata',
+        style: 'width:100%; border-radius:8px; aspect-ratio:9/16; background:#000; object-fit:contain;'
+      });
+
+      const dCard = h('div', { class: 'sc-clip-card' },
+        h('div', { class: 'sc-clip-media' }, vidEl),
+        h('div', { class: 'sc-clip-body' },
+          h('div', { class: 'sc-clip-title', text: dv.title, title: dv.title }),
+          h('div', { style: 'font-size:11.5px; color:var(--text-muted); margin:4px 0;' },
+            `📦 ${dv.size_mb} MB | 🕒 ${dv.created_at}`
+          ),
+          h('div', { class: 'sc-clip-actions', style: 'display:flex; flex-wrap:wrap; gap:6px; margin-top:auto;' },
+            h('a', {
+              class: 'sc-btn sc-btn-sm',
+              href: dv.video_url,
+              download: dv.filename,
+              style: 'text-decoration:none;'
+            }, '📥 Baixar MP4'),
+            h('button', {
+              class: 'sc-btn sc-btn-sm',
+              style: 'background:#ef4444; border-color:#ef4444; color:#fff;',
+              onclick: async () => {
+                const targetYt = state.activeYtAccount || 'default';
+                if (!confirm(`Publicar este vídeo dublado no YouTube Shorts?`)) return;
+                try {
+                  toast('Enviando para o YouTube...');
+                  await apiSupo('/youtube-publisher/publish-single', {
+                    method: 'POST',
+                    body: JSON.stringify({
+                      account_id: targetYt,
+                      video_path: dv.video_path,
+                      video_url: dv.video_url,
+                      title: dv.title,
+                      description: `${dv.title}\n\n#Shorts #dublado #brasil #viral`,
+                      tags: ['Shorts', 'dublado', 'brasil', 'gta6'],
+                      is_short: true,
+                      visibility: 'public',
+                    }),
+                  });
+                  toast('Shorts enviado com sucesso!');
+                  navegar('youtube_publisher');
+                } catch (e) {
+                  toast('Erro ao publicar: ' + e.message);
+                }
+              }
+            }, '🔴 YouTube Shorts'),
+            h('button', {
+              class: 'sc-btn sc-btn-sm sc-btn-primary',
+              onclick: async () => {
+                const targetAcc = state.activeAccount || (state.accounts[0] || {}).id || 'conta_meuscortes';
+                if (!confirm(`Publicar este vídeo dublado no TikTok?`)) return;
+                try {
+                  toast('Enviando para o TikTok...');
+                  await apiSupo('/tiktok-downloads/publish', {
+                    method: 'POST',
+                    body: JSON.stringify({
+                      folder: '@dublados',
+                      filename: dv.filename,
+                      account_id: targetAcc,
+                      title: dv.title,
+                      description: `${dv.title}\n\n#Shorts #dublado #brasil #viral`,
+                      tags: ['Shorts', 'dublado', 'brasil'],
+                    }),
+                  });
+                  toast('Publicado no TikTok com sucesso!');
+                } catch (e) {
+                  toast('Erro ao publicar: ' + e.message);
+                }
+              }
+            }, '🚀 TikTok')
+          )
+        )
+      );
+      dubbedGrid.append(dCard);
+    }
+    dubbedSection.append(dubbedGrid);
+  }
+
+  // Lista de Criadores para Dublar
+  let creators = [];
+  try {
+    const cData = await apiSupo('/tiktok-downloads/creators');
+    creators = cData.creators || [];
+  } catch (e) {
+    console.warn(e);
+  }
+
+  const chooseSection = h('div', null,
+    h('h2', { style: 'font-size:16px; font-weight:700; margin-bottom:14px;' },
+      '📁 Escolha um Canal/Tópico para Dublar Vídeos'
+    )
+  );
+
+  const creatorsGrid = h('div', { class: 'sc-clip-grid' });
+  for (const c of creators) {
+    if (c.folder === '@dublados') continue;
+    const cCard = h('div', { class: 'sc-card', style: 'padding:18px; display:flex; flex-direction:column; gap:12px;' },
+      h('div', { style: 'display:flex; align-items:center; gap:10px;' },
+        h('div', { style: 'width:38px; height:38px; border-radius:50%; background:rgba(59,130,246,0.15); display:flex; align-items:center; justify-content:center; font-size:18px;' }, '📱'),
+        h('div', null,
+          h('div', { style: 'font-weight:700; font-size:14px;' }, c.display_name || c.username),
+          h('div', { style: 'font-size:12px; color:var(--text-muted);' }, `${c.video_count} vídeos disponíveis (${c.total_size_mb} MB)`)
+        )
+      ),
+      h('button', {
+        class: 'sc-btn sc-btn-primary',
+        style: 'margin-top:auto; justify-content:center;',
+        onclick: () => {
+          state.selectedTikTokCreator = c.folder;
+          navegar('tiktok_downloads');
+        }
+      }, `🌐 Abrir Vídeos para Dublagem (${c.video_count})`)
+    );
+    creatorsGrid.append(cCard);
+  }
+  chooseSection.append(creatorsGrid);
+
+  container.append(head, statusBar, dubbedSection, chooseSection);
+}
+
+/* ==========================================================================
+   MODAL: CONFIGURAR E INICIAR DUBLAGEM & TRADUÇÃO DE VÍDEO
+   ========================================================================== */
+async function abrirModalTraduzirVideo(v) {
+  const modal = document.getElementById('dialog-modal');
+  const box = document.getElementById('dialog-modal-content');
+  box.replaceChildren();
+
+  // Carrega vozes disponíveis
+  let voices = [];
+  try {
+    const vData = await apiSupo('/translator/voices');
+    voices = vData.voices || [];
+  } catch (e) {
+    console.warn(e);
+  }
+
+  const selVoice = h('select', {
+    class: 'sc-select',
+    style: 'width:100%; font-weight:600; padding:10px; font-size:13px;'
+  }, ...voices.map(vc =>
+    h('option', {
+      value: vc.id,
+      selected: vc.is_default,
+      text: `${vc.engine === 'voicestudio' ? '🎙️ ' : '🤖 '}${vc.name} ${vc.available ? '(Disponível)' : '(Offline)'}`
+    })
+  ));
+
+  const selDucking = h('select', {
+    class: 'sc-select',
+    style: 'width:100%; padding:10px; font-size:13px;'
+  },
+    h('option', { value: '0.15', selected: true, text: '🎙️ Ducking Suave (Voz original 15% ao fundo + Voz Dublada 100%)' }),
+    h('option', { value: '0.00', text: '🔇 Mudo Completo (Substituir 100% o áudio pela voz dublada)' }),
+    h('option', { value: '0.30', text: '🔊 Ducking Alto (Voz original 30% ao fundo + Voz Dublada)' })
+  );
+
+  const chkSubtitles = h('input', {
+    type: 'checkbox',
+    id: 'chk-burn-sub',
+    checked: true,
+    style: 'cursor:pointer; width:18px; height:18px;'
+  });
+
+  const txtCustomTitle = h('input', {
+    type: 'text',
+    class: 'sc-input',
+    value: v.title || '',
+    placeholder: 'Título traduzido (opcional)...',
+    style: 'width:100%; font-size:13px;'
+  });
+
+  const progressWrap = h('div', {
+    style: 'display:none; margin-top:20px; padding:16px; background:rgba(59,130,246,0.06); border:1px solid rgba(59,130,246,0.25); border-radius:10px;'
+  },
+    h('div', { style: 'display:flex; justify-content:space-between; font-size:12.5px; font-weight:700; margin-bottom:8px;' },
+      h('span', { id: 'dub-step-msg', text: 'Iniciando processo...' }),
+      h('span', { id: 'dub-step-pct', text: '0%' })
+    ),
+    h('div', { style: 'background:rgba(255,255,255,0.1); border-radius:8px; height:9px; overflow:hidden;' },
+      h('div', {
+        id: 'dub-progress-bar',
+        style: 'background:linear-gradient(90deg, #3b82f6, #10b981); height:100%; width:0%; transition:width 0.4s ease;'
+      })
+    )
+  );
+
+  const resultWrap = h('div', {
+    style: 'display:none; margin-top:20px; padding:18px; background:rgba(34,197,94,0.08); border:1px solid rgba(34,197,94,0.3); border-radius:12px;'
+  });
+
+  const btnIniciar = h('button', {
+    class: 'sc-btn sc-btn-primary',
+    style: 'background:#3b82f6; border-color:#3b82f6; font-weight:700; font-size:14px; padding:12px 24px; display:flex; align-items:center; justify-content:center; gap:8px;',
+    onclick: async () => {
+      btnIniciar.disabled = true;
+      btnIniciar.textContent = '⏳ Dublando Vídeo com IA...';
+      progressWrap.style.display = 'block';
+
+      try {
+        await apiSupo('/translator/start', {
+          method: 'POST',
+          body: JSON.stringify({
+            video_path: v.video_path || null,
+            folder: v.folder,
+            filename: v.filename,
+            voice_id: selVoice.value,
+            ducking_volume: parseFloat(selDucking.value) || 0.15,
+            burn_subtitles: chkSubtitles.checked,
+            title: txtCustomTitle.value.trim() || v.title,
+          }),
+        });
+
+        const timer = setInterval(async () => {
+          try {
+            const stData = await apiSupo('/translator/status');
+            const job = stData.job || {};
+            const pct = job.percent || 0;
+            const bar = document.getElementById('dub-progress-bar');
+            const msgEl = document.getElementById('dub-step-msg');
+            const pctEl = document.getElementById('dub-step-pct');
+            if (bar) bar.style.width = `${pct}%`;
+            if (msgEl) msgEl.textContent = job.message || 'Processando...';
+            if (pctEl) pctEl.textContent = `${pct}%`;
+
+            if (!job.running) {
+              clearInterval(timer);
+              if (job.error) {
+                toast('Erro na dublagem: ' + job.error);
+                btnIniciar.disabled = false;
+                btnIniciar.textContent = '🔄 Tentar Novamente';
+              } else if (job.result) {
+                toast('Vídeo dublado e legendado com sucesso!');
+                btnIniciar.style.display = 'none';
+                mostrarResultadoDublagem(resultWrap, job.result, v);
+              }
+            }
+          } catch (e) {
+            console.warn(e);
+          }
+        }, 1200);
+
+      } catch (err) {
+        toast('Erro ao iniciar dublagem: ' + err.message);
+        btnIniciar.disabled = false;
+        btnIniciar.textContent = '🎬 Iniciar Dublagem & Tradução';
+        progressWrap.style.display = 'none';
+      }
+    }
+  }, '🎬 Iniciar Dublagem & Tradução');
+
+  const btnFechar = h('button', {
+    class: 'sc-btn',
+    onclick: () => { modal.style.display = 'none'; }
+  }, 'Fechar');
+
+  // Preview do vídeo
+  const vidPreview = h('video', {
+    src: v.video_url,
+    controls: true,
+    poster: v.cover_url || '',
+    style: 'width:180px; height:240px; border-radius:10px; background:#000; object-fit:contain; flex-shrink:0;'
+  });
+
+  const content = h('div', { style: 'padding:24px; max-width:680px; width:100%; display:flex; flex-direction:column; gap:16px;' },
+    h('div', { style: 'display:flex; align-items:center; justify-content:space-between;' },
+      h('h2', { style: 'font-size:18px; font-weight:800; display:flex; align-items:center; gap:8px;' },
+        '🌐 Traduzir, Dublar & Legendar Vídeo'
+      ),
+      h('button', {
+        class: 'sc-btn-ghost',
+        style: 'font-size:18px; cursor:pointer;',
+        onclick: () => { modal.style.display = 'none'; }
+      }, '✕')
+    ),
+
+    h('div', { style: 'display:flex; gap:18px; align-items:flex-start;' },
+      vidPreview,
+      h('div', { style: 'flex:1; display:flex; flex-direction:column; gap:12px;' },
+        h('div', null,
+          h('div', { style: 'font-size:11px; font-weight:700; color:var(--text-muted); margin-bottom:4px;' }, 'VÍDEO SELECIONADO:'),
+          h('div', { style: 'font-size:13.5px; font-weight:700;', text: v.title })
+        ),
+        h('div', null,
+          h('label', { style: 'font-size:11px; font-weight:700; color:var(--text-muted); display:block; margin-bottom:4px;' }, '🎙️ VOZ DE DUBLAGEM:'),
+          selVoice
+        ),
+        h('div', null,
+          h('label', { style: 'font-size:11px; font-weight:700; color:var(--text-muted); display:block; margin-bottom:4px;' }, '🎚️ TRILHA SONORA DE FUNDO (DUCKING):'),
+          selDucking
+        ),
+        h('div', { style: 'display:flex; align-items:center; gap:10px; margin-top:2px;' },
+          chkSubtitles,
+          h('label', { for: 'chk-burn-sub', style: 'font-size:13px; font-weight:600; cursor:pointer;' },
+            '📝 Queimar legendas traduzidas em português no vídeo'
+          )
+        )
+      )
+    ),
+
+    progressWrap,
+    resultWrap,
+
+    h('div', { style: 'display:flex; justify-content:flex-end; gap:10px; margin-top:10px;' },
+      btnFechar,
+      btnIniciar
+    )
+  );
+
+  box.replaceChildren(content);
+  modal.style.display = 'flex';
+}
+
+function mostrarResultadoDublagem(container, res, originalVideo) {
+  container.style.display = 'block';
+  container.replaceChildren();
+
+  const vidPlayer = h('video', {
+    src: res.video_url,
+    controls: true,
+    autoplay: true,
+    style: 'width:100%; max-height:360px; border-radius:8px; background:#000; margin-bottom:12px;'
+  });
+
+  container.append(
+    h('div', { style: 'font-weight:700; color:#15803d; font-size:15px; margin-bottom:8px; display:flex; align-items:center; gap:6px;' },
+      '✔ Vídeo Dublado & Legendado com Sucesso!'
+    ),
+    vidPlayer,
+    h('div', { style: 'display:flex; flex-wrap:wrap; gap:8px;' },
+      h('a', {
+        class: 'sc-btn sc-btn-sm',
+        href: res.video_url,
+        download: res.filename,
+        style: 'text-decoration:none;'
+      }, '📥 Baixar MP4 Dublado'),
+      h('button', {
+        class: 'sc-btn sc-btn-sm',
+        style: 'background:#ef4444; border-color:#ef4444; color:#fff;',
+        onclick: async () => {
+          const targetYt = state.activeYtAccount || 'default';
+          try {
+            toast('Enviando para o YouTube Shorts...');
+            await apiSupo('/youtube-publisher/publish-single', {
+              method: 'POST',
+              body: JSON.stringify({
+                account_id: targetYt,
+                video_path: res.pub_video_path || res.video_path,
+                video_url: res.video_url,
+                title: res.title,
+                description: `${res.title}\n\n#Shorts #dublado #brasil`,
+                tags: ['Shorts', 'dublado', 'brasil'],
+                is_short: true,
+                visibility: 'public',
+              }),
+            });
+            toast('Enviado para o YouTube Shorts com sucesso!');
+            document.getElementById('dialog-modal').style.display = 'none';
+            navegar('youtube_publisher');
+          } catch (e) {
+            toast('Erro ao publicar no YouTube: ' + e.message);
+          }
+        }
+      }, '🔴 Publicar no YouTube Shorts'),
+      h('button', {
+        class: 'sc-btn sc-btn-sm sc-btn-primary',
+        onclick: async () => {
+          const targetAcc = state.activeAccount || (state.accounts[0] || {}).id || 'conta_meuscortes';
+          try {
+            toast('Enviando para o TikTok...');
+            await apiSupo('/tiktok-downloads/publish', {
+              method: 'POST',
+              body: JSON.stringify({
+                folder: '@dublados',
+                filename: res.filename,
+                account_id: targetAcc,
+                title: res.title,
+                description: `${res.title}\n\n#Shorts #dublado #brasil`,
+                tags: ['Shorts', 'dublado', 'brasil'],
+              }),
+            });
+            toast('Publicado no TikTok com sucesso!');
+            document.getElementById('dialog-modal').style.display = 'none';
+          } catch (e) {
+            toast('Erro ao publicar no TikTok: ' + e.message);
+          }
+        }
+      }, '🚀 Publicar no TikTok')
+    )
+  );
+}
