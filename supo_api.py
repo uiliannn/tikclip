@@ -688,7 +688,7 @@ def supo_publish_all_pending(payload: dict[str, Any] | None = None) -> dict[str,
                 except Exception:
                     pass
                 published += 1
-                api_ext._pub_log(f'[{idx}/{total}] Publicado com sucesso no TikTok ✔')
+                api_ext._pub_log(f'[{idx}/{total}] Publicado com sucesso no TikTok [OK]')
             except Exception as exc:
                 failed += 1
                 api_ext._pub_log(f'[{idx}/{total}] Falha no envio: {exc}')
@@ -1299,7 +1299,7 @@ def supo_publish_batch_youtube(payload: dict[str, Any]) -> dict[str, Any]:
                     account=account,
                     progress=lambda m: _yt_pub_log(f'[{idx}/{total}] {m}'),
                 )
-                _yt_pub_log(f'[{idx}/{total}] Publicado com sucesso no YouTube ✔ {res.get("video_url") or ""}')
+                _yt_pub_log(f'[{idx}/{total}] Publicado com sucesso no YouTube [OK] {res.get("video_url") or ""}')
             except Exception as exc:
                 _yt_pub_log(f'[{idx}/{total}] Falha ao publicar: {exc}')
 

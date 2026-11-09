@@ -395,7 +395,7 @@ def _convert_to_vertical_short(video_path: Path, progress: Callable[[str], None]
         logger.warning("Falha ao converter vídeo para vertical: %s", res.stderr)
         return video_path
     if progress:
-        progress("Vídeo formatado para 1080x1920 vertical com sucesso ✔")
+        progress("Vídeo formatado para 1080x1920 vertical com sucesso [OK]")
     return out_path
 
 
@@ -652,7 +652,7 @@ def publish_video(
                         ).first
                         thumb_input.wait_for(state="attached", timeout=4000)
                         thumb_input.set_input_files(str(t_path))
-                        _prog("Miniatura personalizada enviada ✔")
+                        _prog("Miniatura personalizada enviada [OK]")
                         time.sleep(1)
                     except Exception as exc:
                         _prog(f"Aviso: Não foi possível anexar a miniatura ({exc})")
@@ -810,7 +810,7 @@ def publish_video(
                     return search(document);
                 }""")
                 if clicked_anyway:
-                    _prog('Janela detectada: "Ainda estamos verificando seu conteúdo". Clicado em "Publicar mesmo assim" automaticamente ✔')
+                    _prog('Janela detectada: "Ainda estamos verificando seu conteúdo". Clicado em "Publicar mesmo assim" automaticamente [OK]')
                     time.sleep(2)
                     break
 
@@ -830,7 +830,7 @@ def publish_video(
                         loc = page.locator(sel).first
                         if loc.is_visible(timeout=500):
                             loc.click()
-                            _prog('Janela detectada: "Ainda estamos verificando seu conteúdo". Clicado em "Publicar mesmo assim" automaticamente ✔')
+                            _prog('Janela detectada: "Ainda estamos verificando seu conteúdo". Clicado em "Publicar mesmo assim" automaticamente [OK]')
                             time.sleep(2)
                             clicked_anyway = True
                             break
@@ -875,7 +875,7 @@ def publish_video(
                 pass
 
             final_link_msg = f" (Link: {video_url})" if video_url else ""
-            _prog(f"Vídeo publicado com sucesso no YouTube Studio!{final_link_msg} ✔")
+            _prog(f"Vídeo publicado com sucesso no YouTube Studio!{final_link_msg} [OK]")
 
             return {
                 "ok": True,
