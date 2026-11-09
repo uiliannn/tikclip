@@ -692,17 +692,29 @@ def publish_video(
             _prog("Aguardando confirmação de publicação ou verificações pendentes...")
             deadline_check = time.monotonic() + 15
             while time.monotonic() < deadline_check:
-                # 1. Tenta via evaluate para encontrar qualquer botão com texto "Publicar mesmo assim" / "Publish anyway"
+                # 1. Tenta via evaluate com recursão em shadow roots para encontrar o botão "Publicar mesmo assim"
                 clicked_anyway = page.evaluate("""() => {
-                    const elements = Array.from(document.querySelectorAll('button, ytcp-button, tp-yt-paper-button, [role="button"], div[role="button"]'));
-                    for (const el of elements) {
-                        const txt = (el.textContent || '').trim().toLowerCase();
-                        if (txt.includes('publicar mesmo assim') || txt.includes('publish anyway')) {
-                            el.click();
-                            return true;
+                    function search(root) {
+                        if (!root) return false;
+                        const all = root.querySelectorAll ? Array.from(root.querySelectorAll('*')) : [];
+                        for (const el of all) {
+                            if (el.shadowRoot) {
+                                if (search(el.shadowRoot)) return true;
+                            }
+                            const txt = (el.textContent || '').trim().toLowerCase();
+                            const isBtn = el.tagName === 'BUTTON' || el.tagName === 'YTCP-BUTTON' || el.id === 'confirm-button' || el.getAttribute('role') === 'button';
+                            if (isBtn && (txt.includes('publicar mesmo assim') || txt.includes('publish anyway') || txt.includes('mesmo assim'))) {
+                                el.click();
+                                return true;
+                            }
+                            if (el.id === 'confirm-button' && (txt.includes('publicar') || txt.includes('publish'))) {
+                                el.click();
+                                return true;
+                            }
                         }
+                        return false;
                     }
-                    return false;
+                    return search(document);
                 }""")
                 if clicked_anyway:
                     _prog('Janela detectada: "Ainda estamos verificando seu conteúdo". Clicado em "Publicar mesmo assim" automaticamente ✔')
@@ -710,24 +722,36 @@ def publish_video(
                     break
 
                 # 2. Tenta seletores diretos de Playwright
-                pub_anyway_loc = page.locator(
-                    "button:has-text('Publicar mesmo assim'), ytcp-button:has-text('Publicar mesmo assim'), button:has-text('Publish anyway'), ytcp-button:has-text('Publish anyway'), #confirm-button"
-                ).first
-                try:
-                    if pub_anyway_loc.is_visible(timeout=600):
-                        _prog('Janela detectada: "Ainda estamos verificando seu conteúdo". Clicado em "Publicar mesmo assim" automaticamente ✔')
-                        pub_anyway_loc.click()
-                        time.sleep(2)
-                        break
-                except Exception:
-                    pass
+                dialog_buttons = [
+                    "ytcp-confirmation-dialog #confirm-button",
+                    "ytcp-button#confirm-button",
+                    "#confirm-button",
+                    "button:has-text('Publicar mesmo assim')",
+                    "ytcp-button:has-text('Publicar mesmo assim')",
+                    "button:has-text('Publish anyway')",
+                    "ytcp-button:has-text('Publish anyway')",
+                    "[aria-label*='Publicar mesmo assim' i]",
+                ]
+                for sel in dialog_buttons:
+                    try:
+                        loc = page.locator(sel).first
+                        if loc.is_visible(timeout=500):
+                            loc.click()
+                            _prog('Janela detectada: "Ainda estamos verificando seu conteúdo". Clicado em "Publicar mesmo assim" automaticamente ✔')
+                            time.sleep(2)
+                            clicked_anyway = True
+                            break
+                    except Exception:
+                        pass
+                if clicked_anyway:
+                    break
 
                 # Se o botão de fechar do modal de sucesso já apareceu, encerra a espera de diálogo
                 try:
                     close_test = page.locator(
                         "ytcp-uploads-dialog #close-button, ytcp-video-upload-progress #close-button, button:has-text('Fechar'), button:has-text('Close')"
                     ).first
-                    if close_test.is_visible(timeout=600):
+                    if close_test.is_visible(timeout=500):
                         break
                 except Exception:
                     pass
