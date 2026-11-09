@@ -319,6 +319,86 @@ def _clean_browser_blobs(profile_path: Path) -> None:
         pass
 
 
+def _get_ffmpeg_paths() -> tuple[str, str]:
+    """Localiza os executáveis do ffmpeg e ffprobe."""
+    ffmpeg = os.environ.get("TIKCLIP_FFMPEG_PATH")
+    ffprobe = os.environ.get("TIKCLIP_FFPROBE_PATH")
+    if not (ffmpeg and Path(ffmpeg).is_file()):
+        for cand in [
+            Path(r"C:\Users\Uilian\Desktop\tikclip-studio\runtime\ffmpeg\ffmpeg.exe"),
+            Path(r"C:\Users\Uilian\Desktop\tikclip-studio\ffmpeg.exe"),
+        ]:
+            if cand.is_file():
+                ffmpeg = str(cand)
+                break
+        else:
+            ffmpeg = "ffmpeg"
+    if not (ffprobe and Path(ffprobe).is_file()):
+        for cand in [
+            Path(r"C:\Users\Uilian\Desktop\tikclip-studio\runtime\ffmpeg\ffprobe.exe"),
+            Path(r"C:\Users\Uilian\Desktop\tikclip-studio\ffprobe.exe"),
+        ]:
+            if cand.is_file():
+                ffprobe = str(cand)
+                break
+        else:
+            ffprobe = "ffprobe"
+    return ffmpeg, ffprobe
+
+
+def _get_video_dimensions(video_path: Path) -> tuple[int, int]:
+    """Obtém largura e altura do vídeo via ffprobe."""
+    _, ffprobe = _get_ffmpeg_paths()
+    try:
+        flags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
+        res = subprocess.run(
+            [ffprobe, "-v", "error", "-show_entries", "stream=width,height", "-of", "json", str(video_path)],
+            capture_output=True,
+            text=True,
+            timeout=15,
+            creationflags=flags,
+        )
+        data = json.loads(res.stdout)
+        streams = [s for s in data.get("streams", []) if "width" in s]
+        if streams:
+            w = int(streams[0].get("width", 0))
+            h = int(streams[0].get("height", 0))
+            return w, h
+    except Exception as exc:
+        logger.warning("Falha ao checar dimensões do vídeo: %s", exc)
+    return 0, 0
+
+
+def _convert_to_vertical_short(video_path: Path, progress: Callable[[str], None] | None = None) -> Path:
+    """Adapta um vídeo horizontal para 9:16 vertical (1080x1920) com fundo desfocado estético.
+    
+    O YouTube exige proporção vertical (9:16 ou quadrada) para que um vídeo entre como Shorts.
+    """
+    ffmpeg, _ = _get_ffmpeg_paths()
+    out_dir = _data_dir() / "temp_shorts"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_path = out_dir / f"short_916_{uuid.uuid4().hex[:8]}_{video_path.name}"
+
+    if progress:
+        progress("Vídeo horizontal detectado. Adaptando para proporção 9:16 vertical (obrigatório para YouTube Shorts)...")
+
+    flags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
+    cmd = [
+        ffmpeg, "-y", "-i", str(video_path),
+        "-lavfi", "[0:v]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,boxblur=20:5[bg];[0:v]scale=1080:1920:force_original_aspect_ratio=decrease[fg];[bg][fg]overlay=(W-w)/2:(H-h)/2",
+        "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
+        "-c:a", "copy",
+        str(out_path)
+    ]
+    res = subprocess.run(cmd, capture_output=True, text=True, timeout=180, creationflags=flags)
+    if res.returncode != 0 or not out_path.is_file():
+        logger.warning("Falha ao converter vídeo para vertical: %s", res.stderr)
+        return video_path
+    if progress:
+        progress("Vídeo formatado para 1080x1920 vertical com sucesso ✔")
+    return out_path
+
+
 def publish_video(
     video_path: Path | str,
     title: str,
@@ -351,6 +431,19 @@ def publish_video(
     v_path = Path(video_path).resolve()
     if not v_path.is_file():
         raise FileNotFoundError(f"Arquivo de vídeo não encontrado: {video_path}")
+
+    # Se marcado como Shorts, verifica se o vídeo é horizontal.
+    # O YouTube só aceita vídeos verticais (9:16) ou quadrados (1:1) como Shorts!
+    # Se for horizontal (largura > altura), adaptamos automaticamente para 9:16 vertical com fundo desfocado.
+    temp_converted = None
+    if is_short:
+        w, h = _get_video_dimensions(v_path)
+        if w > 0 and h > 0 and w > h:
+            _prog(f"Vídeo horizontal detectado ({w}x{h}). O YouTube exige formato vertical (9:16) para classificar como Shorts.")
+            converted_path = _convert_to_vertical_short(v_path, progress=_prog)
+            if converted_path != v_path:
+                temp_converted = converted_path
+                v_path = converted_path
 
     p_dir = profile_dir(account)
 
@@ -799,3 +892,9 @@ def publish_video(
                 context.close()
             except Exception:
                 pass
+            _clean_browser_blobs(p_dir)
+            if temp_converted and temp_converted.is_file():
+                try:
+                    temp_converted.unlink(missing_ok=True)
+                except Exception:
+                    pass
