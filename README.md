@@ -1,177 +1,166 @@
-# 🎬 TikClip — Central Inteligente de Cortes, Monitoramento e Publicação Multi-Contas
+# 🎬 TikClip — Central Inteligente de Cortes, Dublagem, Tradução e Publicação Multi-Plataforma
 
 <p align="center">
   <img src="docs/screenshots/01-home-criar.png" alt="TikClip Web Interface" width="90%" style="border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.15);" />
 </p>
 
-O **TikClip** é uma plataforma all-in-one de automação de conteúdo audiovisual com Inteligência Artificial. Projetado para criadores, agências e operadores de canais dark, o TikClip automatiza o ciclo completo de produção: desde o monitoramento de canais do YouTube e download, até a transcrição, corte inteligente vertical (9:16), geração de legendas dinâmicas e publicação automatizada em múltiplas contas do TikTok.
+O **TikClip** é uma plataforma *all-in-one* de automação audiovisual e inteligência artificial projetada para criadores de conteúdo, agências e operadores de canais dark. O ecossistema cobre o ciclo completo de produção: desde o download e monitoramento de vídeos, transcrição local via Whisper, tradução e **dublagem neural com voz clonada (VoiceStudio)**, até a geração de legendas dinâmicas e a publicação automatizada no **TikTok** e **YouTube Shorts**.
 
 ---
 
-## 📸 Demonstração da Interface
+## 📸 Demonstração das Funcionalidades
 
-Abaixo estão as principais telas e recursos do ecossistema TikClip:
+### 1. 🌐 Tradutor & Dublador de Vídeos com IA (VoiceStudio & Edge-TTS)
+- Transcrição precisa com timestamps via **faster-whisper** local.
+- Tradução semântica automática para Português (PT-BR).
+- Síntese vocal de alta fidelidade conectada diretamente ao motor local do **VoiceStudio (OmniVoice na porta 3900)** com suporte a perfis clonados (como **Davy Jones**, vozes personalizadas ou vozes neurais brasileiras).
+- Mixagem sonora profissional com **Ducking ajustável** (preserva a trilha sonora original de fundo em volume reduzido enquanto a voz dublada fala).
+- Sistema flexível de legendas: botão para desabilitar legendas, 6 estilos visuais (Amarelo Viral TikTok, Branco Clássico, Verde Neon, Vermelho Gamer, Ciano, Box Preto), controle de tamanho, alinhamento na tela e opção de forçar **MAIÚSCULAS**.
+- Galeria responsiva com cards compactos em proporção 9:16 (sem distorção ou excesso de tamanho).
 
-### 1. Criar Cortes e Envio de Vídeos
-Cole um link do YouTube ou envie um arquivo de vídeo longo. A IA transcreve o áudio, detecta os momentos virais e renderiza clipes verticais prontos.
-![Home - Criar Cortes](docs/screenshots/01-home-criar.png)
+### 2. 📥 Downloader Integrado do TikTok
+- Baixe diretamente pela interface web colando links de **vídeos individuais**, perfis de criadores (`@usuario`) ou páginas de **Trending Topics / Inspiração**.
+- Extração automática de metadados, descrições e hashtags em arquivos `.info.txt` e capas nítidas em `.jpg`.
+- Barra de progresso com porcentagem e velocidade em tempo real.
+- Botão direto para enviar o vídeo recém-baixado imediatamente para o Tradutor & Dublador.
 
----
+### 3. 🔴 Publicador Automático YouTube Studio (Shorts e Vídeos Longos)
+- Automação local via navegador com **Playwright** — sem necessidade de chaves de API pagas ou limites da Google Cloud Console.
+- Suporte a múltiplos canais do YouTube com alternância de perfis.
+- **Conversor Vertical Automático (FFmpeg):** Converte vídeos horizontais (ex: 4:3 ou 16:9) em 9:16 vertical com fundo desfocado (*blurred background*), garantindo que sejam indexados como **YouTube Shorts**.
+- Superação automática de diálogos de checagem do YouTube Studio (*"Ainda estamos verificando seu conteúdo" -> "Publicar mesmo assim"*).
+- Limpeza preventiva de dados temporários e cache do navegador (*IndexedDB blobs*) para manter o disco sempre livre.
 
-### 2. Biblioteca de Cortes e Publicação em Lote
-Acesse todos os seus projetos processados, visualize prévias e dispare publicações em lote com controle de intervalo entre postagens.
-![Biblioteca de Cortes](docs/screenshots/02-biblioteca-cortes.png)
+### 4. 📱 Publicador TikTok Multi-Contas
+- Gerencie múltiplas contas do TikTok com perfis de navegação completamente isolados.
+- Publicação individual ou em lote com intervalos configuráveis entre postagens para evitar bloqueios (*shadowban*).
+- Extração de capas em alta definição com FFmpeg para exibição no feed.
 
----
+### 5. 🤖 Motor Duplo de IA (Google Gemini + DeepSeek)
+- Chave seletora em tempo real para alternar entre **Google Gemini** (Gemini 2.5 Flash / Flash Lite) e **DeepSeek** (DeepSeek V3 Chat).
+- Análise semântica inteligente de vídeos longos com identificação automática dos momentos de maior retenção e impacto emocional (*viral hooks*).
 
-### 3. Monitoramento Automático de Canais do YouTube
-Cadastre canais do YouTube por `@handle`. O TikClip detecta novos vídeos assim que forem postados, gera os cortes e publica automaticamente na conta do TikTok que você associar exclusivamente ao canal.
-![Monitoramento de Canais](docs/screenshots/03-canais-youtube-auto.png)
+### 6. 📹 Monitoramento Passivo de Canais do YouTube
+- Monitore canais inteiros pelo `@handle`.
+- Assim que um novo vídeo for publicado no canal monitorado, o TikClip baixa, gera os cortes virais e programa a postagem na conta vinculada.
 
----
-
-### 4. Gerenciador de Vídeos Baixados do TikTok
-Importe e visualize vídeos baixados com títulos originais, descrições e hashtags prontas para republicação com extração automática de capas em alta resolução via FFmpeg.
-![Vídeos do TikTok](docs/screenshots/04-videos-tiktok-downloads.png)
-
----
-
-### 5. Publicador TikTok Multi-Contas
-Gerencie múltiplas contas do TikTok em perfis de sessão isolados com Playwright. Acompanhe a esteira de envio com console em tempo real e prevenção de bloqueios.
-![Publicador TikTok Multi-Contas](docs/screenshots/05-publicador-tiktok-multicontas.png)
-
----
-
-### 6. Estúdio IA — Ferramentas Criativas
-Crie vídeos virais do zero a partir de uma ideia ou tema com DeepSeek, duble vídeos automaticamente ou crie vídeos com tela dividida (Split Screen) para retenção.
-![Estúdio IA](docs/screenshots/06-estudio-ia-ferramentas.png)
-
----
-
-### 7. Agentes de IA e Servidor MCP
-Conecte o TikClip ao **Claude Desktop**, **Cursor**, **Antigravity** ou qualquer cliente MCP (Model Context Protocol). Permita que agentes de IA recortem e publiquem vídeos por você.
-![Agentes e API MCP](docs/screenshots/07-agentes-mcp-api.png)
+### 7. ⚡ Servidor MCP & API REST para Agentes Autônomos
+- Servidor **Model Context Protocol (MCP)** integrado para conexão com **Cursor**, **Claude Desktop**, **Antigravity** ou agentes autônomos locais.
+- Documentação interativa Swagger/OpenAPI disponível em `/docs`.
 
 ---
 
-### 8. Motor de IA Duplo (Google Gemini + DeepSeek)
-Chave seletora em tempo real para alternar entre a API do **Google Gemini** (Gemini 2.5 Flash / Flash Lite) e **DeepSeek** (DeepSeek V3 Chat) com teste de conectividade integrado.
-![Configurações IA](docs/screenshots/08-configuracoes-ia-dual.png)
+## ⚡ Principais Tecnologias e Bibliotecas
 
----
-
-## ⚡ Principais Funcionalidades
-
-- **Motor Duplo de IA (Dual Engine):** Escolha livremente entre **Google Gemini** e **DeepSeek** para análise semântica e identificação de ganchos virais.
-- **Formatação Vertical Automática (9:16):** Reenquadramento dinâmico com foco nos oradores, desfoque de fundo (*blurred background*) ou tela dividida (*split-screen* de retenção).
-- **Legendas Dinâmicas Estilo TikTok/Reels:** Sincronizadas palavra por palavra (*word-level timing*) geradas localmente com Whisper.
-- **Monitoramento Passivo de Canais:** Verificação contínua de canais do YouTube; novos lançamentos são baixados e cortados sem intervenção manual.
-- **Isolamento Rígido de Contas do TikTok:** Cada canal monitorado pode ser associado a uma conta específica, garantindo que nenhum vídeo seja postado no perfil errado.
-- **Publicador YouTube Studio Multi-Canais:** Automação local gratuita via navegador para postar **YouTube Shorts** (verticais com #Shorts automático) e **Vídeos Normais/Longos** (com envio ou extração de miniatura/capa personalizada com FFmpeg, metadados e controle de visibilidade).
-- **Extração Inteligente de Capas:** O gerador de thumbnails extrai frames nítidos via FFmpeg para garantir capas de alta qualidade no TikTok Studio.
-- **Automação via MCP e API REST:** API OpenAPI interativa e servidor MCP integrado para orquestração por LLMs autônomos.
+| Área | Tecnologias Utilizadas |
+| :--- | :--- |
+| **Backend** | Python 3.10+, FastAPI, Uvicorn, SQLite, Asyncio |
+| **Frontend** | HTML5 Semântico, CSS3 Moderno (Glassmorphism), Vanilla JavaScript reativo |
+| **Processamento de Mídia** | FFmpeg 6.0+, Libx264, AAC, filtros de legendas ASS/SRT, filtros de mixagem de áudio |
+| **Inteligência Artificial** | faster-whisper, Google Gemini API, DeepSeek API, Google Translate API |
+| **Síntese de Voz (TTS)** | VoiceStudio (OmniVoice local porta 3900), Edge-TTS Neural (Microsoft) |
+| **Automação Web** | Playwright (Chromium headless e headed) |
+| **Downloads** | yt-dlp, TikWM API fallback, curl_cffi |
 
 ---
 
 ## 🚀 Instalação Rápida
 
-### Opção A: Instalação Automática com IA (Recomendado)
-Se você utiliza o **Google Gemini**, **Cursor**, **Claude** ou outro assistente com acesso ao terminal:
-1. Abra o arquivo [`INSTALL_PROMPT_GEMINI.md`](INSTALL_PROMPT_GEMINI.md).
-2. Copie o prompt e cole no chat com o assistente.
-3. O agente criará o ambiente virtual, instalará as dependências e iniciará o sistema automaticamente.
+### Opção A: Execução em 1 Clique (Windows)
+Se você já possui o ambiente configurado, basta clicar duas vezes no atalho:
+```text
+Iniciar TikClip.bat
+```
+Ou executar no terminal:
+```powershell
+python server.py
+```
+O servidor iniciará automaticamente em **[http://localhost:8585/ui/](http://localhost:8585/ui/)**.
 
 ---
 
-### Opção B: Instalação Manual
+### Opção B: Instalação Manual Passo a Passo
 
 #### 1. Pré-requisitos
-- **Python 3.10 ou superior** instalado.
-- **FFmpeg** instalado e adicionado ao `PATH` do sistema.
+- **Python 3.10** ou superior instalado.
+- **FFmpeg** instalado e adicionado ao `PATH` do sistema:
   - Windows: `winget install Gyan.FFmpeg`
   - Linux (Ubuntu/Debian): `sudo apt update && sudo apt install -y ffmpeg`
   - macOS: `brew install ffmpeg`
 
 #### 2. Clonar o Repositório
 ```bash
-git clone https://github.com/SEU-USUARIO/tikclip.git
+git clone https://github.com/uiliannn/tikclip.git
 cd tikclip
 ```
 
 #### 3. Criar e Ativar o Ambiente Virtual
-- **No Windows:**
+- **Windows:**
   ```powershell
   python -m venv .venv
   .venv\Scripts\activate
   ```
-- **No Linux/macOS:**
+- **Linux/macOS:**
   ```bash
   python3 -m venv .venv
   source .venv/bin/activate
   ```
 
-#### 4. Instalar Dependências e Playwright
+#### 4. Instalar Dependências e Navegadores do Playwright
 ```bash
 pip install -r requirements.txt
 playwright install chromium
 ```
 
-#### 5. Configurar Variáveis de Ambiente
-Copie o arquivo de exemplo `.env.example`:
+#### 5. Configurar o Arquivo de Ambiente (.env)
+Copie o modelo `.env.example`:
 ```bash
 cp .env.example .env
 ```
-*(As chaves do Gemini e DeepSeek também podem ser salvas diretamente pela aba **Configurações** na interface web).*
+*(Você pode preencher suas chaves do Gemini e DeepSeek no `.env` ou salvá-las diretamente pela interface web na aba **Configurações**).*
 
-#### 6. Iniciar a Aplicação
-- **No Windows (Dois cliques ou terminal):**
-  Execute o arquivo `Iniciar TikClip.bat` ou digite:
-  ```powershell
-  python server.py
-  ```
-- **No Linux/macOS:**
-  ```bash
-  python server.py
-  ```
-
+#### 6. Executar o TikClip
+```bash
+python server.py
+```
 Acesse em seu navegador:
 👉 **[http://localhost:8585/ui/](http://localhost:8585/ui/)**
 
 ---
 
-## 📂 Estrutura do Repositório
+## 📁 Estrutura do Projeto
 
 ```text
 tikclip/
-├── backend/                  # Motor principal de processamento
-│   ├── api/                  # Endpoints REST e rotas
-│   ├── core/                 # Configurações de banco, tarefas e IA
-│   ├── pipeline/             # Pipeline de corte, renderização e áudio
-│   ├── services/             # Whisper, cookies do YouTube e integradores
-│   └── utils/                # Manipulação de vídeo com FFmpeg e IA
-├── docs/                     # Documentação e capturas de tela
-│   └── screenshots/          # Imagens da interface utilizadas no README
-├── web/                      # Interface Web moderna (HTML5, CSS3, JS Vanilla)
-│   ├── css/                  # Estilos SupoClip
-│   ├── js/                   # Controladores reativos da UI
-│   └── index.html            # Dashboard principal
-├── channel_monitor.py        # Módulo de monitoramento contínuo do YouTube
-├── tiktok_library.py         # Gerenciador de biblioteca e capas do TikTok
-├── server.py                 # Ponto de entrada do servidor ASGI/FastAPI
-├── INSTALL_PROMPT_GEMINI.md  # Prompt para automação total de setup com IA
-├── Iniciar TikClip.bat       # Launcher de um clique para Windows
-├── requirements.txt          # Dependências Python
-└── .env.example              # Modelo de configuração
+├── backend/                      # Núcleo da API e regras de negócio
+│   ├── api/                      # Rotas e controladores da API FastAPI
+│   ├── core/                     # Gerenciamento de tarefas, SQLite e IA
+│   ├── pipeline/                 # Processamento de vídeo, corte e legendagem
+│   └── services/                 # Serviços de suporte e integrações
+├── docs/                         # Documentação e capturas de tela da interface
+├── web/                          # Interface Web (Single Page Application)
+│   ├── css/                      # Folhas de estilo da UI
+│   ├── js/                       # supoclip.js (Controlador principal da interface)
+│   └── index.html                # Ponto de entrada do painel de controle
+├── channel_monitor.py            # Monitor contínuo de canais do YouTube
+├── tiktok_library.py             # Gerenciamento de mídias e criadores do TikTok
+├── tiktok_downloader.py          # Módulo de download com yt-dlp e fallback
+├── video_translator.py           # Pipeline de dublagem, Whisper, VoiceStudio e legendas
+├── youtube_local_publisher.py    # Publicador autônomo do YouTube Studio com Playwright
+├── supo_api.py                   # Roteador central de endpoints TikClip
+├── server.py                     # Inicializador do servidor HTTP/ASGI
+├── Iniciar TikClip.bat           # Launcher de um clique para Windows
+├── requirements.txt              # Dependências do projeto
+└── README.md                     # Documentação completa do projeto
 ```
 
 ---
 
-## 🔒 Privacidade e Segurança
-- O repositório está **100% limpo de credenciais e chaves**.
-- Todas as sessões do navegador, cookies e chaves de API são armazenadas exclusivamente no ambiente local da sua máquina (`%APPDATA%/TikClip` no Windows ou diretório home).
-- Nenhuma informação de conta ou mídia é enviada para servidores externos além das APIs oficiais configuradas pelo usuário.
+## 🔒 Privacidade e Segurança Local
+- O projeto opera prioritariamente em ambiente local: suas sessões do navegador, cookies do TikTok e YouTube, perfis de voz do VoiceStudio e vídeos processados permanecem exclusivamente na sua máquina (`%APPDATA%/TikClip`).
+- Nenhuma credencial ou mídia é compartilhada com servidores de terceiros não configurados por você.
 
 ---
 
 ## 📄 Licença
-Distribuído sob a licença **MIT**. Consulte `LICENSE` para mais informações.
+Distribuído sob a licença **MIT**. Consulte o arquivo `LICENSE` para mais detalhes.
