@@ -38,8 +38,8 @@ const state = {
       text_color: '#FFFFFF',
     },
     defaults: {
-      duration_mode: 'medium',
-      duration_seconds: 45,
+      duration_mode: 'long',
+      duration_seconds: 75,
       aspect: 'portrait',
       goal: 'auto',
       clean_fillers: true,
@@ -295,7 +295,7 @@ function renderCriar(container) {
 
   // Estado local do composer
   let arquivoSelecionado = null;
-  let duracaoVal = '45';
+  let duracaoVal = '75';
   let goalVal = 'auto';
   let aspectVal = 'portrait';
   let autoStart = true;
@@ -343,13 +343,13 @@ function renderCriar(container) {
   // Seletor rápido de duração (estilo SupoClip)
   const selectDuracao = h('select', {
     class: 'sc-chip-select',
-    title: 'Duração dos cortes',
+    title: 'Duração dos cortes (>60s para monetização)',
     onchange: (e) => { duracaoVal = e.target.value; },
   },
-    h('option', { value: '', text: '⏱️ IA decide' }),
-    h('option', { value: '25', text: '⏱️ Curto (15–30 s)' }),
-    h('option', { value: '45', selected: true, text: '⏱️ Médio (30–60 s)' }),
-    h('option', { value: '75', text: '⏱️ Longo (60–90 s)' }),
+    h('option', { value: '', text: '⏱️ IA decide (>60 s)' }),
+    h('option', { value: '65', text: '⏱️ Mínimo (62–75 s)' }),
+    h('option', { value: '75', selected: true, text: '⏱️ Padrão (65–90 s)' }),
+    h('option', { value: '95', text: '⏱️ Longo (80–120 s)' }),
   );
 
   // Seletor de Objetivo (Valores esperados pelo backend: 'auto', 'highlight', 'content', 'promo')
@@ -2912,7 +2912,7 @@ async function renderCanais(container) {
           fd.append('goal', 'auto');
           fd.append('language', 'source');
           fd.append('aspect', 'portrait');
-          fd.append('duration', '60');
+          fd.append('duration', '75');
           fd.append('platforms', 'tiktok');
           fd.append('auto_start', 'true');
           fd.append('brand_outro_enabled', 'false');
@@ -4278,9 +4278,10 @@ function renderEstudio(container) {
   if (state.estudioTab === 'gerar') {
     const inpAssunto = h('input', { class: 'sc-input', placeholder: 'Ex.: 5 mistérios do oceano profundo que a ciência não explica' });
     const selDur = h('select', { class: 'sc-select' },
-      h('option', { value: '30', text: '30 segundos' }),
-      h('option', { value: '45', selected: true, text: '45 segundos' }),
-      h('option', { value: '60', text: '60 segundos' }),
+      h('option', { value: '65', text: '65 segundos (>1 min)' }),
+      h('option', { value: '75', selected: true, text: '75 segundos' }),
+      h('option', { value: '90', text: '90 segundos' }),
+      h('option', { value: '120', text: '120 segundos' }),
     );
     const statusText = h('div', { style: 'margin-top:12px; font-size:13px; color:var(--text-secondary);' });
     const galeria = h('div', { class: 'sc-clips-grid', style: 'margin-top:20px;' });

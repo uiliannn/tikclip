@@ -13,37 +13,17 @@ from __future__ import annotations
 import json
 import logging
 import os
-import sys
-import shutil
 import subprocess
 import threading
 import time
+import unicodedata
 import uuid
 from pathlib import Path
 from typing import Any, Optional
 
 logger = logging.getLogger("tikclip.channel_monitor")
 
-def _get_ytdlp_cmd() -> list[str]:
-    """Prefixo de comando para invocar o yt-dlp.
-
-    Devolve lista (e não string) porque o yt-dlp pode estar instalado apenas
-    como pacote Python, sem executável no PATH — caso comum em `pip --user`.
-    Aí rodamos `python -m yt_dlp`, que sempre resolve. Antes o fallback era a
-    string "yt-dlp" e o subprocess estourava FileNotFoundError (WinError 2)
-    em todos os canais monitorados.
-    """
-    env_p = os.getenv("TIKCLIP_YTDLP_PATH")
-    if env_p and Path(env_p).exists():
-        return [env_p]
-    which = shutil.which("yt-dlp")
-    if which:
-        return [which]
-    scripts_dir = Path(sys.prefix) / ("Scripts" if os.name == "nt" else "bin")
-    cand = scripts_dir / ("yt-dlp.exe" if os.name == "nt" else "yt-dlp")
-    if cand.exists():
-        return [str(cand)]
-    return [sys.executable, "-m", "yt_dlp"]
+YTDLP_PATH = Path(r"C:\Users\Uilian\Desktop\tikclip-studio\runtime\python\Scripts\yt-dlp.exe")
 
 
 def _data_dir() -> Path:
@@ -106,7 +86,7 @@ def load_project_channels() -> dict[str, Any]:
                 if isinstance(data, dict):
                     return data
             except Exception:
-                logger.debug("excecao ignorada", exc_info=True)
+                pass
         return {}
 
 
@@ -147,11 +127,13 @@ def resolve_channel_metadata(url_or_handle: str) -> dict[str, Any]:
         else:
             target_url = raw
 
-    ytdlp_cmd = _get_ytdlp_cmd()
+    ytdlp_exe = str(YTDLP_PATH)
+    if not os.path.isfile(ytdlp_exe):
+        ytdlp_exe = "yt-dlp"
 
     sem_janela = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000) if os.name == "nt" else 0
     cmd = [
-        *ytdlp_cmd,
+        ytdlp_exe,
         "--flat-playlist",
         "--playlist-end",
         "5",
@@ -367,7 +349,7 @@ def import_channel_video(channel: dict[str, Any], video: dict[str, Any], server_
         "goal": "auto",
         "language": "source",
         "aspect": "portrait",
-        "duration": "60",
+        "duration": "75",
         "platforms": "tiktok",
         "auto_start": "true",
         "brand_outro_enabled": "false",
@@ -439,7 +421,7 @@ def import_channel_video(channel: dict[str, Any], video: dict[str, Any], server_
         import api_ext
         api_ext._pub_log(f"📺 [Canal {channel['name']}] Novo vídeo importado: \"{title[:45]}\" (Projeto {pid[:8]}) ➔ Conta vinculada: {channel['tiktok_account_name']}")
     except Exception:
-        logger.debug("excecao ignorada", exc_info=True)
+        pass
 
     return {
         "ok": True,
@@ -522,46 +504,9 @@ def check_all_channels(server_port: int = 8585) -> dict[str, Any]:
     }
 
 
-def _projeto_pronto_para_publicar(studio_state: dict) -> bool:
-    """True quando a geração do Studio chegou a um estado terminal.
-
-    Não olha ``job["type"]``: os jobs gravados hoje não têm esse campo (vem
-    ``None``), e o filtro antigo por ("render", "export") devolvia lista vazia,
-    deixando a publicação automática permanentemente desligada.
-    """
-    if not isinstance(studio_state, dict):
-        return False
-    generation = studio_state.get("generation") or {}
-    status = generation.get("status")
-    if status in ("completed", "partial"):
-        return True
-    if status:
-        # screening / rendering / queued...: a geração manda, ainda não acabou
-        return False
-    # Sem status de geração: decide pelo estado das variantes.
-    variants = studio_state.get("output_variants") or []
-    estados = {v.get("status") for v in variants if isinstance(v, dict)}
-    return bool(estados) and estados <= {"completed", "failed", "on_demand"}
-
-
 def _verificar_auto_publicacoes(server_port: int = 8585) -> None:
-    """Verifica projetos que foram importados com auto_publish=True e, se estiverem prontos, publica no TikTok.
-
-    ``TIKCLIP_DISABLE_AUTO_PUBLISH=1`` desliga só a publicação automática (o
-    monitoramento de canais continua). Útil para subir o servidor sem despejar
-    o backlog de projetos prontos na conta de uma vez.
-    """
+    """Verifica projetos que foram importados com auto_publish=True e, se estiverem prontos, publica no TikTok."""
     import api_ext
-    if api_ext.auto_publish_travado_por_env():
-        return
-    try:
-        cfg = api_ext.ler_auto_publish()
-    except Exception:
-        logger.debug("excecao ignorada", exc_info=True)
-        return
-    if not cfg.get("enabled"):
-        return
-    intervalo_global = int(cfg.get("interval_min") or 30)
     proj_meta = load_project_channels()
     if not proj_meta:
         return
@@ -581,26 +526,29 @@ def _verificar_auto_publicacoes(server_port: int = 8585) -> None:
         try:
             studio_state = api_ext._read_studio(pid)
         except Exception:
-            logger.debug("excecao ignorada", exc_info=True)
             continue
 
         # Verificar se tem variantes renderizadas com vídeo pronto
-        # Só cortes com status 'pronto' entram no lote: 'publicado' fica de fora.
-        # Antes o filtro era "tem vídeo", o que reincluía cortes já publicados e
-        # faria o robô repostar o mesmo vídeo.
-        try:
-            clipes = api_ext.project_clips(pid)
-        except Exception:
-            logger.debug("excecao ignorada", exc_info=True)
-            continue
-        ready_variants = [c["id"] for c in clipes if c.get("status") == "pronto"]
+        variants = studio_state.get("output_variants", [])
+        ready_variants = []
+        for v in variants:
+            vid = v.get("id")
+            if not vid:
+                continue
+            payload = api_ext._variant_payload(pid, vid)
+            if payload and payload.get("has_video"):
+                ready_variants.append(vid)
 
         # Se encontrou variantes prontas e o pipeline terminou
-        if ready_variants and _projeto_pronto_para_publicar(studio_state):
+        jobs = studio_state.get("jobs", [])
+        render_jobs = [j for j in jobs if j.get("type") in ("render", "export")]
+        all_done = render_jobs and all(j.get("status") in ("completed", "failed") for j in render_jobs)
+
+        if ready_variants and all_done:
             # Iniciar publicação automática EXCLUSIVAMENTE na conta vinculada ao canal!
             account_id = meta.get("tiktok_account")
             account_name = meta.get("tiktok_account_name", account_id)
-            interval_min = intervalo_global
+            interval_min = meta.get("interval_min", 30)
 
             api_ext._pub_log(f"🚀 [Automação] Projeto \"{studio_state.get('name', pid[:8])}\" concluído! Disparando envio de {len(ready_variants)} cortes na conta \"{account_name}\"")
             
@@ -608,20 +556,13 @@ def _verificar_auto_publicacoes(server_port: int = 8585) -> None:
             save_project_channel_meta(pid, meta)
 
             try:
-                # ext_publish_batch é o endpoint real de publicação em lote.
-                # O nome anterior (_iniciar_publicacao_lote) não existe em
-                # api_ext: dava AttributeError, engolido pelo except abaixo,
-                # e o projeto era marcado como "failed" sem publicar nada.
-                api_ext.ext_publish_batch({
-                    "project_id": pid,
-                    "account_id": account_id,
-                    "variant_ids": ready_variants,
-                    "interval_min": interval_min,
-                    "render_during_wait": False,
-                    # o usuário já autorizou esta conta ao ligar auto_publish;
-                    # sem isso o guard de IP devolveria 409 e nada publicaria.
-                    "confirmado": True,
-                })
+                api_ext._iniciar_publicacao_lote(
+                    pid=pid,
+                    vids=ready_variants,
+                    account=account_id,
+                    interval=interval_min,
+                    render_wait=False,
+                )
                 meta["status"] = "published"
                 save_project_channel_meta(pid, meta)
                 break  # Processa um projeto por vez

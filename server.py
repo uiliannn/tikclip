@@ -8,10 +8,6 @@ reaproveitando:
 """
 from __future__ import annotations
 
-import logging
-
-logger = logging.getLogger(__name__)
-
 import os
 import socket
 import subprocess
@@ -22,15 +18,10 @@ import urllib.request
 import webbrowser
 from pathlib import Path
 
-
 HERE = Path(__file__).resolve().parent
 WEB_DIR = HERE / 'web'
 
-# Pasta do TikClip Studio (opcional). Antes era um caminho absoluto fixo, que
-# só existe na máquina do autor. Ordem: env var > pasta irmã do repositório.
-STUDIO_ROOT = Path(
-    os.environ.get('TIKCLIP_STUDIO_ROOT') or (HERE.parent / 'tikclip-studio')
-)
+STUDIO_ROOT = Path(r'C:\Users\Uilian\Desktop\tikclip-studio')
 STUDIO_APP = STUDIO_ROOT / 'app'
 STUDIO_RUNTIME = STUDIO_APP / 'runtime'
 
@@ -56,7 +47,7 @@ def _proteger_logging_utf8() -> None:
                     if hasattr(self, 'flush'):
                         self.flush()
             except Exception:
-                logger.debug("excecao ignorada", exc_info=True)
+                pass
 
     logging.StreamHandler.emit = _safe_emit
 
@@ -97,7 +88,7 @@ def _aprimorar_llm_manager() -> None:
     """Garante que o seletor Gemini vs DeepSeek funcione tanto via SDK nativo quanto via API OpenAI."""
     try:
         from backend.core import llm_manager as lm
-        from backend.core.llm_providers import GeminiProvider
+        from backend.core.llm_providers import GeminiProvider, LLMProviderFactory, ProviderType
 
         orig_init = lm.LLMManager._initialize_provider
 
@@ -111,7 +102,7 @@ def _aprimorar_llm_manager() -> None:
                         self.current_provider = GeminiProvider(api_key=api_key, model_name=model_name)
                         return
                     except Exception:
-                        logger.debug("excecao ignorada", exc_info=True)
+                        pass
             return orig_init(self)
 
         lm.LLMManager._initialize_provider = _novo_init
@@ -181,7 +172,7 @@ def _aprimorar_publicador() -> None:
                     try:
                         api_ext._registrar_publicacao(pid, clip, job, variant, video, result, account)
                     except Exception:
-                        logger.debug("excecao ignorada", exc_info=True)
+                        pass
                     if status == 'completed':
                         published += 1
                         api_ext._pub_log(f'[{idx}/{total}] publicado com sucesso ✔')
@@ -196,7 +187,7 @@ def _aprimorar_publicador() -> None:
                             for b in idb.glob('*.indexeddb.blob'):
                                 shutil.rmtree(b, ignore_errors=True)
                     except Exception:
-                        logger.debug("excecao ignorada", exc_info=True)
+                        pass
                 except Exception as exc:
                     failed += 1
                     api_ext._pub_log(f'[{idx}/{total}] falhou: {exc}')
@@ -210,7 +201,7 @@ def _aprimorar_publicador() -> None:
                     try:
                         api_ext.ext_render_pending({'project_id': pid})
                     except Exception:
-                        logger.debug("excecao ignorada", exc_info=True)
+                        pass
 
                 end = time.time() + wait_s
                 while time.time() < end:
@@ -283,7 +274,7 @@ def _aprimorar_hashtags_projeto() -> None:
                     if isinstance(tags, list):
                         return [str(t).strip().lstrip('#') for t in tags if str(t).strip()][:15]
             except Exception:
-                logger.debug("excecao ignorada", exc_info=True)
+                pass
             return []
 
         api_ext.ler_hashtags_projeto = _safe_ler_hashtags_projeto
@@ -300,6 +291,66 @@ def escolher_porta(preferida: int = 8585) -> int:
         return int(s.getsockname()[1])
 
 
+def _aprimorar_duracao_minima() -> None:
+    """Garante que cortes e vídeos gerados tenham duração mínima > 60s (monetização TikTok)."""
+    try:
+        import dataclasses
+        from backend.pipeline import quality, clip_finder
+        from backend.services import gerador
+
+        _orig_profile_for = quality.profile_for
+
+        def _profile_for_min_62(total_sec: float):
+            prof = _orig_profile_for(total_sec)
+            if prof.total_sec >= 62.0 or prof.total_sec == 0.0:
+                lo, hi = prof.target_clip_sec
+                new_min = max(62.0, float(prof.min_clip_sec))
+                new_lo = max(65.0, float(lo))
+                new_hi = max(new_lo + 30.0, float(hi))
+                new_max = max(new_hi, float(prof.max_clip_sec))
+                return dataclasses.replace(
+                    prof,
+                    min_clip_sec=new_min,
+                    target_clip_sec=(new_lo, new_hi),
+                    max_clip_sec=new_max,
+                )
+            return prof
+
+        quality.profile_for = _profile_for_min_62
+
+        _orig_short_video_profile = clip_finder.short_video_profile
+
+        def _short_video_profile_min_62(profile):
+            prof = _orig_short_video_profile(profile)
+            if prof.total_sec >= 62.0 or prof.total_sec == 0.0:
+                lo, hi = prof.target_clip_sec
+                new_min = max(62.0, float(prof.min_clip_sec))
+                new_lo = max(65.0, float(lo))
+                new_hi = max(new_lo + 30.0, float(hi))
+                return dataclasses.replace(
+                    prof,
+                    min_clip_sec=new_min,
+                    target_clip_sec=(new_lo, new_hi),
+                )
+            return prof
+
+        clip_finder.short_video_profile = _short_video_profile_min_62
+
+        _orig_gerador_iniciar = gerador.iniciar
+
+        def _gerador_iniciar_min_65(assunto: str, duracao: float = 75.0, voz: str | None = None, quantidade: int = 1, fundo: str | None = None):
+            try:
+                d = float(duracao or 75.0)
+            except (TypeError, ValueError):
+                d = 75.0
+            d = max(65.0, min(180.0, d))
+            return _orig_gerador_iniciar(assunto, d, voz, quantidade, fundo)
+
+        gerador.iniciar = _gerador_iniciar_min_65
+    except Exception as exc:
+        print(f'[tikclip-web] Aviso ao aplicar duracao minima >60s: {exc}')
+
+
 def preparar_ambiente() -> int:
     os.environ['TIKCLIP_DATA_DIR'] = str(DATA_DIR)
     os.environ['TIKCLIP_APP_DIR'] = str(DATA_DIR)
@@ -314,24 +365,19 @@ def preparar_ambiente() -> int:
         if sys.stderr and hasattr(sys.stderr, 'reconfigure'):
             sys.stderr.reconfigure(encoding='utf-8', errors='replace')
     except Exception:
-        logger.debug("excecao ignorada", exc_info=True)
+        pass
 
     _resolver_ffmpeg()
 
-    # O repositório tem prioridade sobre a pasta externa do Studio. Antes, o
-    # insert(0) sucessivo colocava STUDIO_ROOT na frente de HERE no sys.path,
-    # então `import backend` resolvia para a cópia de tikclip-studio — o código
-    # deste repositório (inclusive as correções) nunca era executado.
-    if str(HERE) not in sys.path:
-        sys.path.insert(0, str(HERE))
-    for caminho in (str(STUDIO_APP), str(STUDIO_RUNTIME), str(STUDIO_ROOT)):
-        if caminho not in sys.path and Path(caminho).is_dir():
-            sys.path.append(caminho)
+    for caminho in (str(HERE), str(STUDIO_APP), str(STUDIO_RUNTIME), str(STUDIO_ROOT)):
+        if caminho not in sys.path:
+            sys.path.insert(0, caminho)
 
     _aprimorar_llm_manager()
     _aprimorar_publicador()
     _aprimorar_pydantic_cenas()
     _aprimorar_hashtags_projeto()
+    _aprimorar_duracao_minima()
     porta_env = os.getenv('TIKCLIP_WEB_PORT')
     return int(porta_env) if porta_env else escolher_porta(8585)
 
@@ -343,7 +389,7 @@ def montar_app(porta: int):
         ip_local = socket.gethostbyname(socket.gethostname())
         log_guard.LOCAL_HOSTNAMES.add(ip_local)
     except Exception:
-        logger.debug("excecao ignorada", exc_info=True)
+        pass
 
     from fastapi.responses import RedirectResponse
     from fastapi.staticfiles import StaticFiles
@@ -369,12 +415,7 @@ def montar_app(porta: int):
 
     app.mount('/ui', StaticFiles(directory=str(WEB_DIR), html=True), name='ui')
 
-    # Mesma resolução usada pelo video_translator: env > pasta legada > dados.
-    _legado_downloads = Path.home() / '.gemini' / 'antigravity' / 'scratch' / 'tiktok-downloader-web' / 'downloads'
-    tiktok_downloads_dir = Path(
-        os.environ.get('TIKCLIP_DOWNLOADS_DIR')
-        or (_legado_downloads if _legado_downloads.is_dir() else DATA_DIR / 'tiktok-downloads')
-    )
+    tiktok_downloads_dir = Path(r'C:\Users\Uilian\.gemini\antigravity\scratch\tiktok-downloader-web\downloads')
     if tiktok_downloads_dir.is_dir():
         app.mount('/media/tiktok-downloads', StaticFiles(directory=str(tiktok_downloads_dir)), name='tiktok_downloads')
 
@@ -395,14 +436,11 @@ def aguardar_servidor(porta: int, limite_s: float = 45.0) -> bool:
 
 
 def main() -> int:
-    # Precisa vir antes de qualquer log: sem isso, mensagem com acento ou
-    # caractere chinês estoura UnicodeEncodeError no console cp1252 do Windows.
-    _proteger_logging_utf8()
     _sem_janelas_de_console()
     try:
         sys.stdout.reconfigure(encoding='utf-8', errors='replace')
     except Exception:
-        logger.debug("excecao ignorada", exc_info=True)
+        pass
 
     porta = preparar_ambiente()
     url = f'http://localhost:{porta}/ui/'

@@ -50,8 +50,8 @@ DEFAULT_SUPO_SETTINGS: dict[str, Any] = {
         'position': 'bottom',
     },
     'defaults': {
-        'duration_mode': 'medium',   # auto, short (15-30), medium (30-60), long (60-90)
-        'duration_seconds': 45,
+        'duration_mode': 'long',     # >60s para monetização
+        'duration_seconds': 75,
         'aspect': 'portrait',        # portrait (9:16), landscape (16:9), square (1:1)
         'goal': 'auto',
         'clean_fillers': True,
