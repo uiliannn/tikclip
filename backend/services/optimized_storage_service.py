@@ -2,17 +2,17 @@
 优化存储服务 - 解决双重存储问题
 数据库只存储元数据，文件系统存储实际文件
 """
+from backend.utils.time_utils import utcnow
 
 import json
 import logging
 import shutil
 from pathlib import Path
 from typing import Dict, Any, Optional, List
-from datetime import datetime, timedelta
+from datetime import timedelta
 from sqlalchemy.orm import Session
 
 from ..core.config import get_data_directory
-from ..models.project import Project
 from ..models.clip import Clip
 from ..models.collection import Collection
 
@@ -248,7 +248,7 @@ class OptimizedStorageService:
     def cleanup_old_files(self, keep_days: int = 30):
         """清理旧文件"""
         try:
-            cutoff_date = datetime.utcnow() - timedelta(days=keep_days)
+            cutoff_date = utcnow() - timedelta(days=keep_days)
             
             # 清理旧的临时文件
             temp_dir = self.data_dir / "temp"

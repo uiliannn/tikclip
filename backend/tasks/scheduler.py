@@ -4,7 +4,6 @@
 """
 
 import logging
-from celery import Celery
 from celery.schedules import crontab
 
 from ..core.celery_app import celery_app

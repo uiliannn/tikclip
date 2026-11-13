@@ -1,19 +1,78 @@
-# TikClip - Dependências Principais
+# TikClip — Dependências
+#
+# Instalação: python -m pip install -r requirements.txt
+# Depois:     python -m playwright install chromium
+#
+# Este arquivo lista tudo que o código importa diretamente. Antes faltavam
+# `edge-tts` e `faster-whisper` (usados na dublagem), então `pip install -r`
+# seguido de `python server.py` quebrava no primeiro vídeo dublado com
+# ModuleNotFoundError.
+#
+# Pacotes pesados/opcionais ficam no bloco final, comentados, para não
+# arrastar GBs de download em quem só quer cortar e publicar vídeo.
+
+# --- núcleo web / API -------------------------------------------------------
 fastapi>=0.110.0
 uvicorn[standard]>=0.28.0
+starlette>=0.36.0
+anyio>=4.0.0
+aiofiles>=23.2.0
+aiohttp>=3.9.0
+httpx>=0.27.0
+python-multipart>=0.0.9
 pydantic>=2.5.0
 pydantic-settings>=2.1.0
+python-dotenv>=1.0.0
+pyyaml>=6.0
+
+# --- banco / tarefas -------------------------------------------------------
 sqlalchemy>=2.0.0
+# celery/redis não são opcionais: backend/api/v1/tasks.py importa
+# task_queue_service, que importa celery.result no nível do módulo — sem
+# celery o servidor nem sobe.
+celery>=5.3.0
+redis>=5.0.0
+
+# --- download de mídia -----------------------------------------------------
 yt-dlp>=2024.0.0
+requests>=2.31.0
+
+# --- IA / transcrição / tradução -------------------------------------------
 google-genai>=0.1.0
 openai>=1.12.0
-httpx>=0.27.0
+# dublagem: TTS neural + transcrição local
+edge-tts>=6.1.0
+faster-whisper>=1.0.0
+
+# --- publicação automatizada -----------------------------------------------
 playwright>=1.40.0
-cryptography>=42.0.0
+
+# --- mídia / utilidades ----------------------------------------------------
 pillow>=10.0.0
-mutagen>=1.47.0
-aiofiles>=23.2.0
-python-multipart>=0.0.9
-python-dotenv>=1.0.0
-requests>=2.31.0
 numpy>=1.24.0
+pysrt>=1.1.2
+pytz>=2024.1
+cryptography>=42.0.0
+mutagen>=1.47.0
+
+# --- sistema / observabilidade ---------------------------------------------
+psutil>=5.9.0
+sentry-sdk>=2.0.0
+
+# --- API/MCP para agentes --------------------------------------------------
+mcp>=1.0.0
+qrcode>=7.4.0
+
+# ---------------------------------------------------------------------------
+# OPCIONAIS — descomente apenas o que for usar.
+# ---------------------------------------------------------------------------
+# # reconhecimento alternativo (SenseVoice/FunASR) — exige torch (~2 GB)
+# torch>=2.2.0
+# funasr>=1.1.0
+# huggingface-hub>=0.23.0
+#
+# # visão computacional (detecção de rosto / enquadramento)
+# opencv-python-headless>=4.9.0
+#
+# # TTS na nuvem (Alibaba DashScope)
+# dashscope>=1.20.0

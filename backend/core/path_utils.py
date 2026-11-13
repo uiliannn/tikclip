@@ -5,7 +5,6 @@
 
 import os
 from pathlib import Path
-from typing import Optional
 
 DESKTOP_TRUE_VALUES = {"1", "true", "yes", "on"}
 

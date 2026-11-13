@@ -5,10 +5,9 @@
 
 import os
 import json
-import shutil
 import logging
 from pathlib import Path
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional
 from fastapi import APIRouter, HTTPException, UploadFile, File, Depends
 from pydantic import BaseModel, Field, validator
 
@@ -357,31 +356,11 @@ async def get_settings():
         raise HTTPException(status_code=500, detail=f"获取设置失败: {str(e)}")
 
 
-@router.post("/paths/data-directory")
-async def update_data_directory(
-    new_path: str,
-    migrate_data: bool = True
-):
-    """更新数据目录"""
-    check_desktop_mode()
-    
-    try:
-        from backend.core.desktop_config import set_data_dir
-        
-        result = set_data_dir(new_path, migrate_data)
-        
-        if result["success"]:
-            return {
-                "message": result["message"],
-                "new_path": result["new_path"],
-                "migrated_files": result.get("migrated_files", []),
-                "failed_files": result.get("failed_files", [])
-            }
-        else:
-            raise HTTPException(status_code=400, detail=result["error"])
-            
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"更新数据目录失败: {str(e)}")
+# NOTA: existia aqui um handler duplicado de POST /paths/data-directory, com
+# assinatura por query params. Como o FastAPI resolve rotas na ordem de
+# registro, ele vencia o handler definitivo mais abaixo e fazia qualquer
+# chamada com corpo JSON retornar 422. O handler único e correto é
+# `update_data_directory(payload: UpdateDataDirRequest)`.
 
 @router.get("/paths/data-directory")
 async def get_data_directory_info():
@@ -489,7 +468,7 @@ async def test_api_connection(request: TestApiRequest):
             }
         else:
             # 提供更详细的错误信息
-            error_msg = f"API连接测试失败"
+            error_msg = "API连接测试失败"
             if request.provider == "dashscope":
                 error_msg += "。请检查API Key是否正确，DashScope API Key通常以'sk-'开头"
             elif request.provider == "openai" and custom_base_url:

@@ -16,7 +16,7 @@ project_root = Path(__file__).parent.parent.parent
 if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
-from backend.core.database import engine, SessionLocal
+from backend.core.database import engine
 from sqlalchemy import text
 
 def add_thumbnail_column():

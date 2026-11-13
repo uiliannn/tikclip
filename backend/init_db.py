@@ -14,12 +14,10 @@ if str(backend_dir) not in sys.path:
 
 from ..core.database import init_database, get_database_url
 from ..core.config import init_paths, get_data_directory
-from ..models.base import Base
 from ..models.project import Project, ProjectStatus, ProjectType
 from ..models.clip import Clip
 from ..models.collection import Collection
 from ..models.task import Task, TaskStatus, TaskType
-from sqlalchemy.orm import Session
 from ..core.database import SessionLocal
 
 def create_initial_data():

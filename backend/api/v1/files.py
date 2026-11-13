@@ -4,7 +4,7 @@
 """
 
 import logging
-from typing import List, Optional
+from typing import List
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session

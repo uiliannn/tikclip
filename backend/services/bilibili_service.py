@@ -2,18 +2,16 @@
 B站服务类 - 重构版本
 移除bilitool依赖，使用直接API调用
 """
+from backend.utils.time_utils import utcnow
 
 import asyncio
 import json
 import logging
 import os
-import hashlib
-import time
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Dict, List, Optional, Tuple, Any
 from uuid import UUID
 
-import aiofiles
 import aiohttp
 from sqlalchemy.orm import Session
 
@@ -455,11 +453,11 @@ class BilibiliUploadService:
             if success:
                 record.status = 'completed'
                 record.bv_id = uploader.bv_id
-                record.completed_at = datetime.utcnow()
+                record.completed_at = utcnow()
             else:
                 record.status = 'failed'
                 record.error_message = uploader.error_message
-                record.failed_at = datetime.utcnow()
+                record.failed_at = utcnow()
             
             self.db.commit()
             return success
@@ -472,9 +470,9 @@ class BilibiliUploadService:
                 if record:
                     record.status = 'failed'
                     record.error_message = str(e)
-                    record.failed_at = datetime.utcnow()
+                    record.failed_at = utcnow()
                     self.db.commit()
-            except:
+            except Exception:  # noqa: BLE001
                 pass
             return False
     
@@ -488,7 +486,7 @@ class BilibiliUploadService:
             record.status = status
             if error_message:
                 record.error_message = error_message
-            record.updated_at = datetime.utcnow()
+            record.updated_at = utcnow()
             
             self.db.commit()
             return True
@@ -510,7 +508,7 @@ class BilibiliUploadService:
             # 重置状态为待处理
             record.status = "pending"
             record.error_message = None
-            record.updated_at = datetime.utcnow()
+            record.updated_at = utcnow()
             self.db.commit()
             
             # 重新启动上传任务
@@ -541,7 +539,7 @@ class BilibiliUploadService:
             
             # 更新状态为已取消
             record.status = "cancelled"
-            record.updated_at = datetime.utcnow()
+            record.updated_at = utcnow()
             self.db.commit()
             
             logger.info(f"投稿任务已取消: {record_id}")
@@ -673,11 +671,11 @@ class BilibiliUploadService:
             if success:
                 record.status = 'completed'
                 record.bv_id = uploader.bv_id
-                record.completed_at = datetime.utcnow()
+                record.completed_at = utcnow()
             else:
                 record.status = 'failed'
                 record.error_message = uploader.error_message
-                record.failed_at = datetime.utcnow()
+                record.failed_at = utcnow()
             
             self.db.commit()
             return success
@@ -690,9 +688,9 @@ class BilibiliUploadService:
                 if record:
                     record.status = 'failed'
                     record.error_message = str(e)
-                    record.failed_at = datetime.utcnow()
+                    record.failed_at = utcnow()
                     self.db.commit()
-            except:
+            except Exception:  # noqa: BLE001
                 pass
             return False
 

@@ -14,7 +14,6 @@ if str(project_root) not in sys.path:
 from backend.core.database import SessionLocal
 from backend.models.project import Project
 from backend.utils.thumbnail_generator import generate_project_thumbnail
-from sqlalchemy import text
 
 def generate_thumbnails_for_projects():
     """为所有没有缩略图的项目生成缩略图"""

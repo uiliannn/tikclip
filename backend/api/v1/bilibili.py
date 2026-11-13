@@ -5,7 +5,7 @@ B站相关API路由
 
 import logging
 from typing import Optional
-from fastapi import APIRouter, HTTPException, Form, UploadFile, File
+from fastapi import APIRouter, HTTPException, Form
 from pydantic import BaseModel
 import sys
 from pathlib import Path
@@ -14,7 +14,6 @@ from ...utils.bilibili_downloader import BilibiliDownloader, get_bilibili_video_
 from ...core.config import get_data_directory
 from pathlib import Path
 import uuid
-import asyncio
 from datetime import datetime
 
 logger = logging.getLogger(__name__)

@@ -3,7 +3,7 @@ Base schemas for common response patterns.
 """
 
 from datetime import datetime
-from typing import Optional, Any, Dict, List
+from typing import Optional, Any
 from pydantic import BaseModel, Field
 
 

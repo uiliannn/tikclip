@@ -1,10 +1,15 @@
 """Import-time readiness: saved settings and local runtimes only. No paid calls."""
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 from pathlib import Path
 
 from backend.core.local_presets import LOCAL_PRESETS
 from backend.services import ai_model_settings as ai_models
+
 
 
 def _check(ok: bool, code: str, repair: str = 'none') -> dict:
@@ -91,7 +96,7 @@ def _ffmpeg() -> dict:
         if path and Path(path).exists():
             return _check(True, 'available')
     except Exception:
-        pass
+        logger.debug("excecao ignorada", exc_info=True)
     return _check(False, 'missing')
 
 

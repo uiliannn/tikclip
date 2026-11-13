@@ -1,6 +1,4 @@
 """Render immutable draft snapshots using the existing ffmpeg layout/subtitle code."""
-import os
-import subprocess
 import tempfile
 from pathlib import Path
 from backend.services.publish_export import ExportRequest, _build_filter, _load_srt_entries, _probe, resolve_cjk_font, slice_srt, subtitle_line_limit

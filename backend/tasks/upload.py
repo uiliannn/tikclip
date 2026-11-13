@@ -3,8 +3,6 @@
 """
 
 import logging
-from pathlib import Path
-from sqlalchemy.orm import Session
 
 from ..core.celery_app import celery_app
 from ..core.database import SessionLocal

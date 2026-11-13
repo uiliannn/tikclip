@@ -2,12 +2,11 @@
 项目服务
 提供项目相关的业务逻辑操作
 """
+from backend.utils.time_utils import utcnow
 
-from typing import Optional, List, Dict, Any
+from typing import Optional
 from sqlalchemy.orm import Session
-import shutil
 import logging
-from pathlib import Path
 
 from ..services.base import BaseService
 from ..repositories.project_repository import ProjectRepository
@@ -16,7 +15,7 @@ from ..models.task import Task
 from ..models.clip import Clip
 from ..models.collection import Collection
 from ..schemas.project import ProjectCreate, ProjectUpdate, ProjectResponse, ProjectListResponse, ProjectFilter
-from ..schemas.base import PaginationParams, PaginationResponse
+from ..schemas.base import PaginationParams
 from ..schemas.project import ProjectType, ProjectStatus
 from ..schemas.task import TaskStatus
 
@@ -232,8 +231,7 @@ class ProjectService(BaseService[Project, ProjectCreate, ProjectUpdate, ProjectR
             return False
         
         # Update status and completion time
-        from datetime import datetime
-        self.update(project_id, status="completed", completed_at=datetime.utcnow())
+        self.update(project_id, status="completed", completed_at=utcnow())
         return True
     
     def fail_project(self, project_id: str, error_message: str = None) -> bool:
@@ -265,7 +263,7 @@ class ProjectService(BaseService[Project, ProjectCreate, ProjectUpdate, ProjectR
         if dt is None:
             return None
         
-        from datetime import datetime, timezone
+        from datetime import timezone
         import pytz
         
         # 由于SQLite存储时丢失了时区信息，我们假设这些时间是UTC时间

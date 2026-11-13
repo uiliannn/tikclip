@@ -2,13 +2,12 @@
 离线模式支持API
 提供网络状态检测、离线模式管理和缓存功能
 """
-import os
 import time
 import asyncio
 import requests
 from datetime import datetime, timedelta
 from typing import Dict, Any, List, Optional
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from backend.core.desktop_config import is_desktop_mode
@@ -282,7 +281,7 @@ async def process_sync_queue():
             _sync_queue.remove(item)
             processed += 1
             
-        except Exception as e:
+        except Exception:
             item.retry_count += 1
             if item.retry_count >= item.max_retries:
                 _sync_queue.remove(item)

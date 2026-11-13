@@ -6,7 +6,6 @@ Celery应用配置
 import os
 from celery import Celery
 from celery.schedules import crontab
-from pathlib import Path
 
 # 设置默认配置模块
 # os.environ.setdefault('CELERY_CONFIG_MODULE', 'backend.core.celery_app')

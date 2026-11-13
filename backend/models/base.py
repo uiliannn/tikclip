@@ -7,7 +7,6 @@ import uuid
 from datetime import datetime, timezone
 from sqlalchemy import Column, String, DateTime, MetaData
 from sqlalchemy.orm import declarative_base
-from sqlalchemy.dialects.postgresql import UUID
 
 # 创建MetaData实例，确保表不会重复定义
 metadata = MetaData()

@@ -9,6 +9,7 @@
 因为 SQLAlchemy engine 在 import 时就按 `DATABASE_URL` 建好了。
 """
 from __future__ import annotations
+from backend.utils.time_utils import utcnow
 
 import asyncio
 import json
@@ -280,9 +281,9 @@ def _set_project_status(project_id: str, status: str, error: Optional[str] = Non
             if not p:
                 return
             p.status = ProjectStatus(status)
-            p.updated_at = datetime.utcnow()
+            p.updated_at = utcnow()
             if status == "completed":
-                p.completed_at = datetime.utcnow()
+                p.completed_at = utcnow()
             if error is not None:
                 # Project 表没有 error_message 列；CLI 路径也不建 Task 行，所以记到 metadata，
                 # ProjectService.latest_error_message 会回退读它，桌面首页 / 详情页照样能看到原因

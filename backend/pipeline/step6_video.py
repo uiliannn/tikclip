@@ -3,13 +3,12 @@ Step 6: 视频生成 - 根据聚类结果生成最终视频切片
 """
 import json
 import logging
-import re
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Optional
 from pathlib import Path
 
 # 导入依赖
 from ..utils.video_processor import VideoProcessor
-from ..core.shared_config import METADATA_DIR, CLIPS_DIR, COLLECTIONS_DIR
+from ..core.shared_config import METADATA_DIR
 
 logger = logging.getLogger(__name__)
 

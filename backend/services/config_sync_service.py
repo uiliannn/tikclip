@@ -7,7 +7,6 @@ the same surface while using the project data directory as the source of truth.
 
 import json
 import logging
-from pathlib import Path
 from typing import Optional
 
 from backend.core.path_utils import get_data_directory

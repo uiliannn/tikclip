@@ -16,8 +16,6 @@ from backend.core.database import SessionLocal
 from backend.models.project import Project
 from backend.utils.thumbnail_generator import generate_project_thumbnail
 from backend.core.path_utils import get_projects_directory
-import requests
-import base64
 import logging
 
 logger = logging.getLogger(__name__)
@@ -45,15 +43,15 @@ def fix_project_thumbnail(project_id: str):
         
         if is_bilibili_project:
             # 链接导入项目 - 尝试从B站获取缩略图
-            print(f"📺 检测到B站项目，尝试获取原视频缩略图...")
+            print("📺 检测到B站项目，尝试获取原视频缩略图...")
             success = fix_bilibili_thumbnail(project, db)
         elif has_video_file:
             # 文件导入项目 - 从视频文件生成缩略图
-            print(f"📁 检测到文件导入项目，从视频文件生成缩略图...")
+            print("📁 检测到文件导入项目，从视频文件生成缩略图...")
             success = fix_file_import_thumbnail(project, db)
         else:
             # 没有原始视频文件，尝试从切片生成缩略图
-            print(f"🎬 没有原始视频文件，尝试从切片生成缩略图...")
+            print("🎬 没有原始视频文件，尝试从切片生成缩略图...")
             success = fix_clip_thumbnail(project, db)
         
         if success:
@@ -128,7 +126,7 @@ def fix_clip_thumbnail(project, db):
         # 获取第一个切片文件
         clip_files = list(clips_dir.glob("*.mp4"))
         if not clip_files:
-            print(f"⚠️  没有找到切片文件")
+            print("⚠️  没有找到切片文件")
             return False
         
         first_clip = clip_files[0]

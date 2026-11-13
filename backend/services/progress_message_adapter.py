@@ -2,11 +2,10 @@
 进度消息适配器
 将富消息转换为简消息，实现向下兼容
 """
+from backend.utils.time_utils import utcnow
 
-import json
 import logging
-from typing import Dict, Any, Optional
-from datetime import datetime
+from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -66,7 +65,7 @@ class ProgressMessageAdapter:
             "progress": progress,
             "step_name": step_name,
             "status": status,
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": utcnow().isoformat()
         }
         
         # 可选字段

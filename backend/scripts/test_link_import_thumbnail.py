@@ -30,7 +30,7 @@ async def test_bilibili_thumbnail_extraction():
         # 获取视频信息
         video_info = await downloader.get_video_info(test_url)
         
-        print(f"✅ 视频信息获取成功:")
+        print("✅ 视频信息获取成功:")
         print(f"   标题: {video_info.title}")
         print(f"   上传者: {video_info.uploader}")
         print(f"   缩略图URL: {video_info.thumbnail_url}")
@@ -82,7 +82,7 @@ async def test_youtube_thumbnail_extraction():
         loop = asyncio.get_event_loop()
         video_info = await loop.run_in_executor(None, extract_info_sync, test_url, ydl_opts)
         
-        print(f"✅ 视频信息获取成功:")
+        print("✅ 视频信息获取成功:")
         print(f"   标题: {video_info.get('title', 'Unknown')}")
         print(f"   上传者: {video_info.get('uploader', 'Unknown')}")
         print(f"   缩略图URL: {video_info.get('thumbnail', '')}")
@@ -123,7 +123,7 @@ async def main():
     # 测试YouTube缩略图提取
     youtube_success = await test_youtube_thumbnail_extraction()
     
-    print(f"\n📊 测试结果:")
+    print("\n📊 测试结果:")
     print(f"   B站缩略图提取: {'✅ 成功' if bilibili_success else '❌ 失败'}")
     print(f"   YouTube缩略图提取: {'✅ 成功' if youtube_success else '❌ 失败'}")
     

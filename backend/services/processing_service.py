@@ -14,7 +14,7 @@ from backend.services.config_manager import ProjectConfigManager, ProcessingStep
 # from backend.services.pipeline_adapter import PipelineAdapter  # 临时注释，文件不存在
 from backend.services.processing_orchestrator import ProcessingOrchestrator
 from backend.services.processing_context import ProcessingContext
-from backend.services.exceptions import ServiceError, ProcessingError, TaskError, ProjectError, handle_service_error
+from backend.services.exceptions import handle_service_error
 from backend.services.concurrency_manager import with_concurrency_control
 
 logger = logging.getLogger(__name__)

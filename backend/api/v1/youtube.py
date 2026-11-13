@@ -5,7 +5,7 @@ YouTube相关API路由
 
 import logging
 from typing import Optional
-from fastapi import APIRouter, HTTPException, Form, UploadFile, File
+from fastapi import APIRouter, HTTPException, Form
 from pydantic import BaseModel
 import sys
 from pathlib import Path
@@ -13,7 +13,6 @@ sys.path.append(str(Path(__file__).parent.parent.parent))
 from ...core.config import get_data_directory
 from ...utils.ffmpeg_utils import ytdlp_ffmpeg_options
 import uuid
-import asyncio
 from datetime import datetime
 from contextlib import contextmanager
 import os
@@ -48,7 +47,7 @@ def get_cookies_file() -> Optional[str]:
                 for pat in ("*cookies*.txt", "*cookie*.txt", "*youtube*.txt"):
                     candidates.extend(d.glob(pat))
         except Exception:
-            pass
+            logger.debug("excecao ignorada", exc_info=True)
 
     # 2. Pasta Downloads do usuario
     downloads = Path.home() / "Downloads"
@@ -57,7 +56,7 @@ def get_cookies_file() -> Optional[str]:
             for pat in ("*cookies*.txt", "*cookie*.txt", "*youtube*.txt"):
                 candidates.extend(downloads.glob(pat))
     except Exception:
-        pass
+        logger.debug("excecao ignorada", exc_info=True)
 
     # 3. Raiz do usuario
     for name in ("cookies.txt", "www.youtube.com_cookies.txt"):
@@ -77,7 +76,7 @@ def get_cookies_file() -> Optional[str]:
             if p.is_file() and p.stat().st_size > 0:
                 valid_files.append((p.stat().st_mtime, p))
         except Exception:
-            pass
+            logger.debug("excecao ignorada", exc_info=True)
 
     if valid_files:
         # Preferir arquivo que tenha cookies de sessao. Um export anonimo mais
@@ -174,7 +173,7 @@ async def parse_youtube_video(
         try:
             logger.info(f"yt-dlp={yt_dlp.version.__version__}, py={sys.executable}")
         except Exception:
-            pass
+            logger.debug("excecao ignorada", exc_info=True)
 
         # 使用 subprocess 直接调用 yt-dlp 命令行工具，避免 Python 环境配置影响
         import subprocess
@@ -520,7 +519,6 @@ async def process_youtube_download_task(task_id: str, request: YouTubeDownloadRe
         await update_project_download_progress(project_id, 10.0, "Obtendo informações do vídeo...")
         
         # 使用yt-dlp下载视频
-        import yt_dlp
         import asyncio
         from ...core.config import get_data_directory
         
@@ -798,7 +796,7 @@ async def _try_youtube_subtitle_strategies(url: str, download_dir: Path, browser
         try:
             subtitle_path = await strategy()
             if subtitle_path:
-                logger.info(f"YouTube备用字幕策略成功")
+                logger.info("YouTube备用字幕策略成功")
                 return subtitle_path
         except Exception as e:
             logger.warning(f"YouTube备用字幕策略失败: {e}")
@@ -823,7 +821,7 @@ async def _try_download_with_different_formats(url: str, download_dir: Path, bro
                 'writeautomaticsub': True,
                 'subtitleslangs': get_subtitle_langs(),
                 'subtitlesformat': fmt,
-                'outtmpl': str(download_dir / f'subtitle_%(title)s.%(ext)s'),
+                'outtmpl': str(download_dir / 'subtitle_%(title)s.%(ext)s'),
                 'noplaylist': True,
                 'quiet': True,
                 'ignoreconfig': True,
@@ -884,7 +882,7 @@ async def _try_download_with_different_langs(url: str, download_dir: Path, brows
                 'subtitleslangs': langs,
                 'subtitlesformat': 'srt',
                 **ytdlp_ffmpeg_options(),
-                'outtmpl': str(download_dir / f'lang_%(title)s.%(ext)s'),
+                'outtmpl': str(download_dir / 'lang_%(title)s.%(ext)s'),
                 'noplaylist': True,
                 'quiet': True,
                 'ignoreconfig': True,

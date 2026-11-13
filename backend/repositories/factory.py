@@ -3,7 +3,7 @@ Repository工厂
 提供统一的Repository实例化和管理
 """
 
-from typing import Dict, Type
+from typing import Dict
 from sqlalchemy.orm import Session
 from ..repositories.base import BaseRepository
 from ..repositories.project_repository import ProjectRepository

@@ -4,14 +4,10 @@ WebSocket API路由
 
 import json
 import logging
-from typing import Dict, Any, List, Optional
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, HTTPException, Depends
-from fastapi.responses import JSONResponse
-from sqlalchemy.orm import Session
+from typing import Dict, Any
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, HTTPException
 
-from ...core.database import get_db
 from ...core.websocket_manager import manager, WebSocketMessage
-from ...services.websocket_notification_service import WebSocketNotificationService
 from ...services.websocket_gateway_service import websocket_gateway_service
 
 logger = logging.getLogger(__name__)
@@ -55,7 +51,7 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
                         {"message": "请发送有效的JSON格式消息"}
                     )
                     await manager.send_personal_message(error_message, user_id)
-                except:
+                except Exception:  # noqa: BLE001
                     # 如果发送失败，说明连接已断开，直接退出
                     break
             except Exception as e:
@@ -67,7 +63,7 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
                         {"error": str(e)}
                     )
                     await manager.send_personal_message(error_message, user_id)
-                except:
+                except Exception:  # noqa: BLE001
                     # 如果发送失败，说明连接已断开，直接退出
                     break
     
@@ -202,7 +198,7 @@ async def handle_client_message(user_id: str, message: Dict[str, Any]):
     elif message_type == "sync_subscriptions":
         # 同步订阅集对齐
         task_ids = message.get("channels", [])
-        results = await websocket_gateway_service.sync_user_subscriptions(user_id, task_ids)
+        results = await websocket_gateway_service.sync_task_subscriptions(user_id, task_ids)
         response = WebSocketMessage.create_system_notification(
             "subscription_sync",
             "订阅集同步完成",

@@ -4,7 +4,6 @@
 """
 
 import enum
-from typing import Optional
 from sqlalchemy import Column, String, Text, JSON, Integer, DateTime
 from sqlalchemy.orm import relationship
 from .base import BaseModel

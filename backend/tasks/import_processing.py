@@ -6,7 +6,6 @@
 import logging
 from pathlib import Path
 from typing import NoReturn, Optional
-from celery import Celery
 from backend.core.database import session_scope
 from backend.services.project_service import ProjectService
 from backend.services.cloud_transcription import CloudTranscriptionError

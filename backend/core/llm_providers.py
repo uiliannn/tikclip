@@ -6,10 +6,9 @@ import json
 import logging
 import os
 from abc import ABC, abstractmethod
-from typing import Dict, Any, List, Optional, Union
+from typing import Dict, Any, List, Optional
 from enum import Enum
 from dataclasses import dataclass
-from pathlib import Path
 
 logger = logging.getLogger(__name__)
 

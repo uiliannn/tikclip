@@ -49,3 +49,8 @@ data/
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# artefatos de teste/lint
+.coverage
+htmlcov/
+.ruff_cache/

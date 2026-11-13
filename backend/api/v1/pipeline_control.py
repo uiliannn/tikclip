@@ -2,17 +2,15 @@
 流水线控制API
 提供手动启动、停止和查询流水线状态的功能
 """
+from backend.utils.time_utils import utcnow
 
 from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks
 from sqlalchemy.orm import Session
-from typing import Dict, Any, List
 from ...core.database import get_db
 from ...models.project import Project, ProjectStatus
 from ...models.task import Task, TaskStatus
 from ...services.auto_pipeline_service import auto_pipeline_service
 from ...services.progress_update_service import progress_update_service
-import asyncio
-from datetime import datetime
 import logging
 
 logger = logging.getLogger(__name__)
@@ -87,7 +85,7 @@ async def stop_pipeline(project_id: str, db: Session = Depends(get_db)):
         stopped_count = 0
         for task in running_tasks:
             task.status = TaskStatus.CANCELLED
-            task.updated_at = datetime.utcnow()
+            task.updated_at = utcnow()
             
             # 通过进度更新服务通知任务停止
             try:
@@ -102,7 +100,7 @@ async def stop_pipeline(project_id: str, db: Session = Depends(get_db)):
         
         # 更新项目状态
         project.status = ProjectStatus.PENDING
-        project.updated_at = datetime.utcnow()
+        project.updated_at = utcnow()
         
         db.commit()
         

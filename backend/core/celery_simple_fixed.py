@@ -2,8 +2,8 @@
 修复的简化Celery应用配置
 解决任务路由和状态更新问题
 """
+from backend.utils.time_utils import utcnow
 
-import os
 from celery import Celery
 
 # 创建Celery应用
@@ -142,7 +142,6 @@ def backend_process_video_pipeline(self, project_id: str, input_video_path: str,
         from ..core.database import SessionLocal
         from ..models.task import Task, TaskStatus
         from ..models.project import Project, ProjectStatus
-        from datetime import datetime
         
         # 直接更新数据库，避免异步调用问题
         db = SessionLocal()
@@ -153,9 +152,9 @@ def backend_process_video_pipeline(self, project_id: str, input_video_path: str,
                 task.status = TaskStatus.COMPLETED
                 task.progress = 100.0
                 task.current_step = '完成'
-                task.completed_at = datetime.utcnow()
-                task.updated_at = datetime.utcnow()
-                print(f"✅ 任务状态已更新到数据库")
+                task.completed_at = utcnow()
+                task.updated_at = utcnow()
+                print("✅ 任务状态已更新到数据库")
             else:
                 print(f"⚠️  找不到任务: {task_id}")
             
@@ -163,8 +162,8 @@ def backend_process_video_pipeline(self, project_id: str, input_video_path: str,
             project = db.query(Project).filter(Project.id == project_id).first()
             if project:
                 project.status = ProjectStatus.COMPLETED
-                project.completed_at = datetime.utcnow()
-                project.updated_at = datetime.utcnow()
+                project.completed_at = utcnow()
+                project.updated_at = utcnow()
                 print(f"✅ 项目状态已更新为已完成: {project_id}")
             else:
                 print(f"⚠️  找不到项目: {project_id}")

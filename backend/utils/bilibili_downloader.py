@@ -4,13 +4,11 @@ B站视频下载器 - 基于yt-dlp实现B站视频和字幕下载
 集成到自动切片工具项目中
 """
 
-import os
 import re
 import asyncio
 import logging
 from pathlib import Path
 from typing import Dict, Any, Optional, Callable
-from datetime import datetime
 import yt_dlp
 
 from .ffmpeg_utils import ytdlp_ffmpeg_options
@@ -21,7 +19,7 @@ except ImportError:
     # 独立运行时的导入
     import sys
     sys.path.append(str(Path(__file__).parent.parent))
-    from ..utils.error_handler import FileIOError, ValidationError, ProcessingError
+    from ..utils.error_handler import ValidationError, ProcessingError
 
 logger = logging.getLogger(__name__)
 

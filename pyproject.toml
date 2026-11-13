@@ -1,0 +1,43 @@
+# Configuração de ferramentas do TikClip.
+#
+# Este arquivo NÃO declara o pacote: a instalação continua sendo feita por
+# `requirements.txt`. Declarar [project] exigiria um build backend e mudaria a
+# forma de instalar/distribuir o projeto — mudança fora do escopo aqui.
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+exclude = [
+    "__pycache__",
+    "web",
+    "docs",
+    "backend/assets",
+    "backend/prompt",
+    "backend/services/runtime_wheels",
+]
+
+[tool.ruff.lint]
+# Baseline: apenas o que quebra em runtime (erro de sintaxe, nome indefinido,
+# import quebrado, comparação literal inválida). Sem isso o `ruff check` fica
+# vermelho por estilo e ninguém olha mais o resultado.
+# Estilo (E4/E7/E741/E712...) fica disponível no relatório do CI, sem bloquear.
+select = ["E9", "F63", "F7", "F82", "F821"]
+
+[tool.ruff.lint.per-file-ignores]
+# duplicações legadas já mapeadas em BUGS.md
+"api_ext.py" = ["F811"]
+"backend/api/v1/youtube.py" = ["F811"]
+"backend/services/account_health_service.py" = ["F811"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+addopts = "-q --strict-markers"
+filterwarnings = ["ignore::DeprecationWarning"]
+# Markers herdados do antigo backend/pytest.ini, que apontava para uma pasta
+# inexistente. Ficam aqui para `--strict-markers` não rejeitar os testes.
+markers = [
+    "slow: testes demorados (deselect com -m 'not slow')",
+    "integration: testes de integração",
+    "unit: testes unitários",
+]

@@ -2,14 +2,13 @@
 任务进度查询API
 提供实时任务进度查询功能
 """
+from backend.utils.time_utils import utcnow
 
 from fastapi import APIRouter, HTTPException, Depends
 from sqlalchemy.orm import Session
-from typing import List, Dict, Any
 from ...core.database import get_db
 from ...models.task import Task, TaskStatus
 from ...services.progress_update_service import progress_update_service
-from datetime import datetime
 
 router = APIRouter()
 
@@ -150,7 +149,7 @@ async def get_progress_summary(db: Session = Depends(get_db)):
                 'pending_tasks': pending_tasks
             },
             'active_tasks_count': len(active_tasks),
-            'timestamp': datetime.utcnow().isoformat()
+            'timestamp': utcnow().isoformat()
         }
         
     except Exception as e:

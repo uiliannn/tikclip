@@ -2,6 +2,10 @@
 桌面模式主启动文件
 使用统一的 app_factory 创建应用，支持端口自动分配
 """
+
+import logging
+
+logger = logging.getLogger(__name__)
 import os
 import sys
 
@@ -11,9 +15,8 @@ try:
     if hasattr(sys.stderr, 'reconfigure'):
         sys.stderr.reconfigure(encoding='utf-8', errors='replace')
 except Exception:
-    pass
+    logger.debug("excecao ignorada", exc_info=True)
 
-import logging
 import signal
 import socket
 import threading
@@ -43,6 +46,7 @@ os.environ.setdefault("LOG_FILE", str(app_data_dir / "logs" / "backend.log"))
 
 from backend.app_factory import create_app
 from backend.core.desktop_config import (
+
     get_desktop_config, 
     is_desktop_mode, 
     ensure_desktop_directories
@@ -172,7 +176,7 @@ class DesktopServiceManager:
             )
             self.server_thread.start()
             
-            self.logger.info(f"🚀 TikClip Desktop 服务启动成功")
+            self.logger.info("🚀 TikClip Desktop 服务启动成功")
             self.logger.info(f"🌐 API地址: http://{self.config.host}:<dynamic>")
             
         except Exception as e:

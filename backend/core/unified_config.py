@@ -7,7 +7,7 @@ import json
 import os
 import logging
 from pathlib import Path
-from typing import Dict, Any, Optional, Union
+from typing import Dict, Any, Optional
 from pydantic import BaseModel, Field, validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 

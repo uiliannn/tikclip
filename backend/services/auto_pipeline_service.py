@@ -2,11 +2,11 @@
 自动化流水线启动服务
 当新项目创建后自动启动视频处理流水线
 """
+from backend.utils.time_utils import utcnow
 
 import logging
 import asyncio
 from typing import Dict, Any, Optional
-from datetime import datetime
 from pathlib import Path
 from sqlalchemy.orm import Session
 from backend.core.database import SessionLocal, session_scope
@@ -85,7 +85,7 @@ class AutoPipelineService:
                 
                 # 更新项目状态
                 project.status = ProjectStatus.PROCESSING
-                project.updated_at = datetime.utcnow()
+                project.updated_at = utcnow()
                 db.commit()
                 task_pk = task.id
 
@@ -124,7 +124,7 @@ class AutoPipelineService:
                 if task:
                     task.celery_task_id = celery_task_id
                     task.status = TaskStatus.RUNNING
-                    task.started_at = datetime.utcnow()
+                    task.started_at = utcnow()
                     db.commit()
 
                 return {
@@ -182,7 +182,7 @@ class AutoPipelineService:
                 priority=0,
                 metadata={
                     "auto_started": True,
-                    "started_at": datetime.utcnow().isoformat()
+                    "started_at": utcnow().isoformat()
                 }
             )
             
@@ -206,7 +206,7 @@ class AutoPipelineService:
                 project = db.query(Project).filter(Project.id == project_id).first()
                 if project:
                     project.status = ProjectStatus.FAILED
-                    project.updated_at = datetime.utcnow()
+                    project.updated_at = utcnow()
                     db.commit()
                     logger.info(f"项目 {project_id} 已标记为失败")
                     

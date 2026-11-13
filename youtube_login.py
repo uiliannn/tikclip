@@ -11,6 +11,10 @@ sem precisar mexer na interface dele.
 """
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 import os
 import sys
 import time
@@ -18,6 +22,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from backend.services import tiktok_local_publisher as ttl
+
 
 # cookies que só existem depois de autenticar de verdade (checagem rígida no login)
 COOKIES_DE_LOGIN = ('SAPISID', '__Secure-3PSID')
@@ -44,7 +49,7 @@ def _garantir_playwright() -> None:
         ttl._ensure_runtime()  # noqa: SLF001 - runtime compartilhado de propósito
         return
     except Exception:
-        pass
+        logger.debug("excecao ignorada", exc_info=True)
 
     alvo = str(data_dir() / 'tiktok-runtime')
     if alvo not in sys.path:
@@ -144,7 +149,7 @@ def _nomes_do_arquivo(caminho: Path) -> set[str]:
                 if len(campos) >= 7:
                     nomes.add(campos[5])
     except Exception:
-        pass
+        logger.debug("excecao ignorada", exc_info=True)
     return nomes
 
 
@@ -172,6 +177,7 @@ def _candidatos() -> list[dict[str, Any]]:
                     vistos.add(resolvido)
                     achados.append((arq.stat().st_mtime, arq))
                 except Exception:
+                    logger.debug("excecao ignorada", exc_info=True)
                     continue
 
     achados.sort(key=lambda par: par[0], reverse=True)
@@ -246,7 +252,7 @@ def login_e_exportar(timeout_s: int = 600, progress: Callable[[str], None] | Non
             try:
                 contexto.close()
             except Exception:
-                pass
+                logger.debug("excecao ignorada", exc_info=True)
 
     if not exportados:
         raise RuntimeError(

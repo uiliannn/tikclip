@@ -2,17 +2,15 @@
 增强进度服务
 整合现有进度系统，提供更好的错误处理和状态管理
 """
+from backend.utils.time_utils import utcnow
 
-import time
 import json
 import logging
-import asyncio
 from typing import Dict, Any, Optional, List, Callable
 from datetime import datetime, timedelta
 from dataclasses import dataclass, asdict
 from enum import Enum
 import redis
-from sqlalchemy.orm import Session
 
 from ..core.database import SessionLocal
 from ..models.project import Project, ProjectStatus
@@ -164,7 +162,7 @@ class EnhancedProgressService:
         if not progress_info.start_time or progress_info.progress <= 0:
             return None
         
-        elapsed = (datetime.utcnow() - progress_info.start_time).total_seconds()
+        elapsed = (utcnow() - progress_info.start_time).total_seconds()
         if elapsed <= 0:
             return None
         
@@ -185,7 +183,7 @@ class EnhancedProgressService:
                 status=ProgressStatus.RUNNING,
                 progress=0,
                 message=initial_message,
-                start_time=datetime.utcnow()
+                start_time=utcnow()
             )
             
             # 保存到缓存
@@ -286,7 +284,7 @@ class EnhancedProgressService:
             progress_info.status = ProgressStatus.COMPLETED
             progress_info.progress = 100
             progress_info.message = message
-            progress_info.end_time = datetime.utcnow()
+            progress_info.end_time = utcnow()
             progress_info.estimated_remaining = 0
             
             # 保存到缓存
@@ -332,7 +330,7 @@ class EnhancedProgressService:
             progress_info.stage = ProgressStage.ERROR
             progress_info.status = ProgressStatus.FAILED
             progress_info.error_message = error_message
-            progress_info.end_time = datetime.utcnow()
+            progress_info.end_time = utcnow()
             progress_info.estimated_remaining = 0
             
             # 保存到缓存
@@ -450,7 +448,7 @@ class EnhancedProgressService:
                     elif progress_info.status == ProgressStatus.RUNNING:
                         project.status = ProjectStatus.PROCESSING
                     
-                    project.updated_at = datetime.utcnow()
+                    project.updated_at = utcnow()
                     db.commit()
                 
                 # 更新任务状态
@@ -459,7 +457,7 @@ class EnhancedProgressService:
                     if task:
                         task.progress = progress_info.progress
                         task.current_step = progress_info.stage.value
-                        task.updated_at = datetime.utcnow()
+                        task.updated_at = utcnow()
                         
                         if progress_info.status == ProgressStatus.COMPLETED:
                             task.status = TaskStatus.COMPLETED
@@ -495,7 +493,7 @@ class EnhancedProgressService:
     def cleanup_old_progress(self, max_age_hours: int = 24):
         """清理旧的进度信息"""
         try:
-            cutoff_time = datetime.utcnow() - timedelta(hours=max_age_hours)
+            cutoff_time = utcnow() - timedelta(hours=max_age_hours)
             cleaned_count = 0
             
             # 清理缓存

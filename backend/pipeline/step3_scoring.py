@@ -3,8 +3,7 @@ Step 3: 内容评分 - 对每个话题进行质量评分，筛选出高质量内
 """
 import json
 import logging
-import re
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Optional
 from pathlib import Path
 from collections import defaultdict
 from .scoring_backend import ScoringBackend, LLMScoringBackend

@@ -5,16 +5,14 @@
 
 import logging
 import time
-import sys
-from typing import Dict, Any, List, Optional, Callable
+from typing import Dict, Any, List, Optional
 from pathlib import Path
 from sqlalchemy.orm import Session
 
-from backend.models.task import Task, TaskStatus, TaskType
+from backend.models.task import TaskStatus
 from backend.repositories.task_repository import TaskRepository
 from backend.services.config_manager import ProjectConfigManager, ProcessingStep
 from backend.services.pipeline_adapter import PipelineAdapter
-from backend.core.config import get_project_root
 
 logger = logging.getLogger(__name__)
 
@@ -28,148 +26,41 @@ try:
     from backend.pipeline.step5_clustering import run_step5_clustering
     from backend.pipeline.step6_video import run_step6_video
     logger.info("流水线模块导入成功")
-except ImportError as e:
-    logger.warning(f"无法导入流水线模块: {e}")
-    # 定义占位符函数
-    def run_step1_outline(**kwargs): 
-        logger.warning("流水线模块未正确导入，使用占位符函数")
-        # 生成模拟输出
-        srt_path = kwargs.get('srt_path')
-        output_path = kwargs.get('output_path')
-        if output_path:
-            import json
-            from pathlib import Path
-            # 确保output_path是Path对象
-            if isinstance(output_path, str):
-                output_path = Path(output_path)
-            output_path.parent.mkdir(parents=True, exist_ok=True)
-            mock_output = {
-                "outlines": [
-                    {"topic": "测试话题1", "start_time": "00:00:00", "end_time": "00:00:05", "content": "测试内容1"},
-                    {"topic": "测试话题2", "start_time": "00:00:05", "end_time": "00:00:10", "content": "测试内容2"}
-                ],
-                "status": "completed",
-                "message": "占位符函数生成的模拟输出"
-            }
-            with open(output_path, 'w', encoding='utf-8') as f:
-                json.dump(mock_output, f, ensure_ascii=False, indent=2)
-        return {"status": "skipped", "message": "流水线模块未正确导入"}
-    
-    def run_step2_timeline(**kwargs): 
-        logger.warning("流水线模块未正确导入，使用占位符函数")
-        # 生成模拟输出
-        output_path = kwargs.get('output_path')
-        if output_path:
-            import json
-            from pathlib import Path
-            # 确保output_path是Path对象
-            if isinstance(output_path, str):
-                output_path = Path(output_path)
-            output_path.parent.mkdir(parents=True, exist_ok=True)
-            mock_output = {
-                "timeline": [
-                    {"time": "00:00:00", "event": "开始"},
-                    {"time": "00:00:05", "event": "话题1"},
-                    {"time": "00:00:10", "event": "话题2"}
-                ],
-                "status": "completed",
-                "message": "占位符函数生成的模拟输出"
-            }
-            with open(output_path, 'w', encoding='utf-8') as f:
-                json.dump(mock_output, f, ensure_ascii=False, indent=2)
-        return {"status": "skipped", "message": "流水线模块未正确导入"}
-    
-    def run_step3_scoring(**kwargs): 
-        logger.warning("流水线模块未正确导入，使用占位符函数")
-        # 生成模拟输出
-        output_path = kwargs.get('output_path')
-        if output_path:
-            import json
-            from pathlib import Path
-            # 确保output_path是Path对象
-            if isinstance(output_path, str):
-                output_path = Path(output_path)
-            output_path.parent.mkdir(parents=True, exist_ok=True)
-            mock_output = {
-                "scored_clips": [
-                    {"clip_id": "1", "score": 0.8, "content": "高分内容1"},
-                    {"clip_id": "2", "score": 0.7, "content": "高分内容2"}
-                ],
-                "status": "completed",
-                "message": "占位符函数生成的模拟输出"
-            }
-            with open(output_path, 'w', encoding='utf-8') as f:
-                json.dump(mock_output, f, ensure_ascii=False, indent=2)
-        return {"status": "skipped", "message": "流水线模块未正确导入"}
-    
-    def run_step4_title(**kwargs): 
-        logger.warning("流水线模块未正确导入，使用占位符函数")
-        # 生成模拟输出
-        output_path = kwargs.get('output_path')
-        if output_path:
-            import json
-            from pathlib import Path
-            # 确保output_path是Path对象
-            if isinstance(output_path, str):
-                output_path = Path(output_path)
-            output_path.parent.mkdir(parents=True, exist_ok=True)
-            mock_output = {
-                "titles": [
-                    {"clip_id": "1", "title": "测试标题1"},
-                    {"clip_id": "2", "title": "测试标题2"}
-                ],
-                "status": "completed",
-                "message": "占位符函数生成的模拟输出"
-            }
-            with open(output_path, 'w', encoding='utf-8') as f:
-                json.dump(mock_output, f, ensure_ascii=False, indent=2)
-        return {"status": "skipped", "message": "流水线模块未正确导入"}
-    
-    def run_step5_clustering(**kwargs): 
-        logger.warning("流水线模块未正确导入，使用占位符函数")
-        # 生成模拟输出
-        output_path = kwargs.get('output_path')
-        if output_path:
-            import json
-            from pathlib import Path
-            # 确保output_path是Path对象
-            if isinstance(output_path, str):
-                output_path = Path(output_path)
-            output_path.parent.mkdir(parents=True, exist_ok=True)
-            mock_output = {
-                "collections": [
-                    {"collection_id": "1", "title": "测试合集1", "clips": ["1", "2"]},
-                    {"collection_id": "2", "title": "测试合集2", "clips": ["3", "4"]}
-                ],
-                "status": "completed",
-                "message": "占位符函数生成的模拟输出"
-            }
-            with open(output_path, 'w', encoding='utf-8') as f:
-                json.dump(mock_output, f, ensure_ascii=False, indent=2)
-        return {"status": "skipped", "message": "流水线模块未正确导入"}
-    
-    def run_step6_video(**kwargs): 
-        logger.warning("流水线模块未正确导入，使用占位符函数")
-        # 生成模拟输出
-        output_path = kwargs.get('output_path')
-        if output_path:
-            import json
-            from pathlib import Path
-            # 确保output_path是Path对象
-            if isinstance(output_path, str):
-                output_path = Path(output_path)
-            output_path.parent.mkdir(parents=True, exist_ok=True)
-            mock_output = {
-                "videos": [
-                    {"clip_id": "1", "video_path": "output/clip_1.mp4"},
-                    {"clip_id": "2", "video_path": "output/clip_2.mp4"}
-                ],
-                "status": "completed",
-                "message": "占位符函数生成的模拟输出"
-            }
-            with open(output_path, 'w', encoding='utf-8') as f:
-                json.dump(mock_output, f, ensure_ascii=False, indent=2)
-        return {"status": "skipped", "message": "流水线模块未正确导入"}
+except ImportError as e:  # noqa: BLE001
+    logger.error(f"无法导入流水线模块: {e}")
+    _PIPELINE_IMPORT_ERROR = e
+
+    def _pipeline_unavailable(step: str):
+        """Falha explicita: nunca gravar resultado simulado no lugar do real.
+
+        Antes, estas funcoes gravavam JSON falso com "status": "completed" e
+        conteudo de teste quando o pipeline nao importava. A etapa seguinte lia
+        esse arquivo e seguia como se tivesse dado certo.
+        """
+        raise RuntimeError(
+            f"Pipeline indisponivel: a etapa '{step}' nao pode ser executada "
+            f"porque backend.pipeline falhou ao importar ({_PIPELINE_IMPORT_ERROR}). "
+            "Corrija a importacao em vez de gerar saida simulada."
+        )
+
+    # Mantem os nomes que o orquestrador importa; qualquer execucao real falha.
+    def run_step1_outline(**kwargs):
+        _pipeline_unavailable("step1_outline")
+
+    def run_step2_timeline(**kwargs):
+        _pipeline_unavailable("step2_timeline")
+
+    def run_step3_scoring(**kwargs):
+        _pipeline_unavailable("step3_scoring")
+
+    def run_step4_title(**kwargs):
+        _pipeline_unavailable("step4_title")
+
+    def run_step5_clustering(**kwargs):
+        _pipeline_unavailable("step5_clustering")
+
+    def run_step6_video(**kwargs):
+        _pipeline_unavailable("step6_video")
 
 
 class ProcessingOrchestrator:
@@ -452,9 +343,6 @@ class ProcessingOrchestrator:
         """发送实时进度更新到前端 - 集成快照发布"""
         try:
             import asyncio
-            import json
-            from ..services.websocket_notification_service import WebSocketNotificationService
-            from ..services.progress_snapshot_service import snapshot_service
             
             # 获取当前步骤信息
             if current_step is None:

@@ -7,7 +7,6 @@ from pathlib import Path
 from typing import Optional
 import base64
 from PIL import Image
-import io
 from .ffmpeg_utils import get_ffmpeg_path, get_ffprobe_path
 
 logger = logging.getLogger(__name__)
@@ -250,7 +249,7 @@ class ThumbnailGenerator:
                 # 清理临时文件
                 try:
                     temp_path.unlink()
-                except:
+                except Exception:  # noqa: BLE001
                     pass
                 
                 return f"data:image/jpeg;base64,{base64_data}"

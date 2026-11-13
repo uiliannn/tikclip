@@ -80,7 +80,7 @@ def _clear_install_error() -> None:
     try:
         _install_error_path().unlink(missing_ok=True)
     except Exception:
-        pass
+        logger.debug("excecao ignorada", exc_info=True)
 
 
 def ensure_on_path() -> None:
@@ -111,7 +111,7 @@ def ensure_on_path() -> None:
                 try:
                     os.add_dll_directory(bin_str)
                 except Exception:
-                    pass
+                    logger.debug("excecao ignorada", exc_info=True)
 
 
 def is_installed() -> bool:

@@ -5,29 +5,21 @@
 
 import logging
 import json
-import os
 import uuid
 import time
-import base64
-import io
 import aiohttp
 import asyncio
-from typing import List, Optional
+from typing import Optional
 from uuid import UUID
 from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks, Body
-from fastapi.responses import Response
 from sqlalchemy.orm import Session
-import qrcode
 
 from ...core.database import get_db
 from ...schemas.bilibili import (
     BilibiliAccountCreate, 
     BilibiliAccountResponse,
     UploadRequest,
-    UploadRecordResponse,
-    UploadStatusResponse,
-    QRLoginRequest,
-    QRLoginResponse
+    UploadRecordResponse
 )
 from ...services.bilibili_service import BilibiliAccountService, BilibiliUploadService
 from ...tasks.upload import upload_clip_task

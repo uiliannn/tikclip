@@ -3,12 +3,11 @@
 支持大文件的分片上传和合并
 """
 
-import os
 import hashlib
 import shutil
 import asyncio
 import aiofiles
-from typing import Optional, Dict, Any, List
+from typing import Dict, Any, List
 from pathlib import Path
 from datetime import datetime
 import logging

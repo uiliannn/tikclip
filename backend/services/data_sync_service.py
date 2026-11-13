@@ -4,13 +4,12 @@
 
 import json
 import logging
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, Optional
 from pathlib import Path
 from sqlalchemy.orm import Session
 from backend.models.clip import Clip, ClipStatus
 from backend.models.collection import Collection, CollectionStatus
 from backend.models.project import Project, ProjectStatus, ProjectType
-from backend.models.task import Task, TaskStatus, TaskType
 from datetime import datetime
 
 logger = logging.getLogger(__name__)

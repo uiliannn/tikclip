@@ -80,7 +80,7 @@ def list_accounts() -> list[dict[str, Any]]:
         try:
             path.write_text(json.dumps(accounts, indent=2, ensure_ascii=False), encoding='utf-8')
         except Exception:
-            pass
+            logger.debug("excecao ignorada", exc_info=True)
 
     return accounts
 
@@ -241,7 +241,7 @@ def _dismiss_overlays(page) -> None:
             document.querySelectorAll(".react-joyride__overlay, .react-joyride__tooltip, [data-test-id='overlay']").forEach(e => e.remove());
         }""")
     except Exception:
-        pass
+        logger.debug("excecao ignorada", exc_info=True)
     _click_first(page, [
         'button[aria-label="Close"]',
         'button[aria-label="Fechar"]',
@@ -303,7 +303,7 @@ def _upload_cover(page, cover_file: Path, progress: Callable[[str], None] | None
                 opened = True
                 break
         except Exception:
-            pass
+            logger.debug("excecao ignorada", exc_info=True)
 
     if not opened:
         logger.warning('Não encontrou botão de editar capa no TikTok Studio')

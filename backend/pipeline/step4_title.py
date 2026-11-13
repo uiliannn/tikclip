@@ -3,8 +3,7 @@ Step 4: 标题生成 - 为高质量内容生成吸引人的标题
 """
 import json
 import logging
-import re
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Optional
 from pathlib import Path
 from collections import defaultdict
 
@@ -55,7 +54,7 @@ class TitleGenerator:
             logger.info(f"处理块 {chunk_index}，其中包含 {len(chunk_clips)} 个片段...")
             
             try:
-                logger.info(f"  > 开始调用API生成标题...")
+                logger.info("  > 开始调用API生成标题...")
                 input_for_llm = [
                     {
                         "id": clip.get('id'),

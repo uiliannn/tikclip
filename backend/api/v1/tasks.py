@@ -6,7 +6,6 @@ from fastapi import APIRouter, HTTPException, Depends, Query
 from typing import List, Optional
 from sqlalchemy.orm import Session
 from backend.core.database import get_db
-from backend.models.task import Task
 from backend.schemas.task import TaskResponse, TaskCreate, TaskUpdate
 from backend.services.task_service import TaskService
 from backend.services.task_queue_service import TaskQueueService
@@ -37,7 +36,7 @@ async def get_tasks(
             project_id=project_id
         )
         return tasks
-    except Exception as e:
+    except Exception:
         logger.exception("获取任务列表失败")
         raise HTTPException(status_code=500, detail="获取任务列表失败，请稍后重试")
 
@@ -51,7 +50,7 @@ async def get_project_tasks(
         task_service = TaskService(db)
         tasks = task_service.get_tasks_by_project_id(project_id)
         return tasks
-    except Exception as e:
+    except Exception:
         logger.exception("获取项目任务失败: %s", project_id)
         raise HTTPException(status_code=500, detail="获取项目任务失败，请稍后重试")
 
@@ -69,7 +68,7 @@ async def get_task(
         return task
     except HTTPException:
         raise
-    except Exception as e:
+    except Exception:
         logger.exception("获取任务详情失败: %s", task_id)
         raise HTTPException(status_code=500, detail="获取任务详情失败，请稍后重试")
 
@@ -83,7 +82,7 @@ async def create_task(
         task_service = TaskService(db)
         task = task_service.create_task(task_data)
         return task
-    except Exception as e:
+    except Exception:
         logger.exception("创建任务失败")
         raise HTTPException(status_code=500, detail="创建任务失败，请稍后重试")
 
@@ -102,7 +101,7 @@ async def update_task(
         return task
     except HTTPException:
         raise
-    except Exception as e:
+    except Exception:
         logger.exception("更新任务失败: %s", task_id)
         raise HTTPException(status_code=500, detail="更新任务失败，请稍后重试")
 
@@ -120,7 +119,7 @@ async def delete_task(
         return {"message": "任务删除成功"}
     except HTTPException:
         raise
-    except Exception as e:
+    except Exception:
         logger.exception("删除任务失败: %s", task_id)
         raise HTTPException(status_code=500, detail="删除任务失败，请稍后重试")
 
@@ -166,7 +165,7 @@ async def submit_task(
         }
     except HTTPException:
         raise
-    except Exception as e:
+    except Exception:
         logger.exception("提交任务失败: %s", task_id)
         raise HTTPException(status_code=500, detail="提交任务失败，请稍后重试")
 
@@ -215,7 +214,7 @@ async def retry_task(
         }
     except HTTPException:
         raise
-    except Exception as e:
+    except Exception:
         logger.exception("重试任务失败: %s", task_id)
         raise HTTPException(status_code=500, detail="重试任务失败，请稍后重试")
 
@@ -241,7 +240,7 @@ async def get_task_status(
         }
     except HTTPException:
         raise
-    except Exception as e:
+    except Exception:
         logger.exception("获取任务状态失败: %s", task_id)
         raise HTTPException(status_code=500, detail="获取任务状态失败，请稍后重试")
 

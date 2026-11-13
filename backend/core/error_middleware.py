@@ -8,14 +8,13 @@ import traceback
 import time
 import asyncio
 import functools
-from typing import Union
 from contextlib import contextmanager
 from fastapi import Request, HTTPException
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from ..utils.error_handler import TikClipsException, ErrorCategory, ErrorLevel
+from ..utils.error_handler import TikClipsException, ErrorCategory
 from ..services.exceptions import ServiceError
 
 logger = logging.getLogger(__name__)
@@ -83,7 +82,7 @@ async def global_exception_handler(request: Request, exc: Exception) -> JSONResp
             import sentry_sdk
             sentry_sdk.capture_exception(exc)
         except Exception:
-            pass
+            logger.debug("excecao ignorada", exc_info=True)
     
     # 根据异常类型返回不同的错误响应
     if isinstance(exc, TikClipsException):

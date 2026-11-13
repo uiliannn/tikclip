@@ -4,7 +4,7 @@
 """
 
 import logging
-from typing import Dict, Any, Optional
+from typing import Dict, Any
 from ..core.celery_app import celery_app
 
 logger = logging.getLogger(__name__)

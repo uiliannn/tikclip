@@ -5,7 +5,7 @@
 
 import enum
 from typing import Optional
-from sqlalchemy import Column, String, Integer, Float, ForeignKey, Enum, JSON, DateTime, Text
+from sqlalchemy import Column, String, Integer, Float, ForeignKey, Enum, JSON, Text
 from sqlalchemy.orm import relationship
 from .base import BaseModel
 

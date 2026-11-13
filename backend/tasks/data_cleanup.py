@@ -2,23 +2,21 @@
 数据清理任务
 定期清理数据库和文件系统中的过期数据
 """
+from backend.utils.time_utils import utcnow
 
-import os
 import logging
 import shutil
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Dict, Any, List
-from celery import current_task, shared_task
+from typing import Dict, Any
+from celery import shared_task
 
-from ..core.celery_app import celery_app
 from ..core.database import SessionLocal
-from ..models.task import Task, TaskStatus
+from ..models.task import Task
 from ..models.project import Project, ProjectStatus
 from ..models.clip import Clip
 from ..models.collection import Collection
 from ..repositories.task_repository import TaskRepository
-from ..repositories.project_repository import ProjectRepository
 
 logger = logging.getLogger(__name__)
 
@@ -42,7 +40,7 @@ def cleanup_expired_data(self, days: int = 30) -> Dict[str, Any]:
         
         try:
             cleanup_results = {
-                'timestamp': datetime.utcnow().isoformat(),
+                'timestamp': utcnow().isoformat(),
                 'days': days,
                 'tasks_cleaned': 0,
                 'projects_cleaned': 0,
@@ -112,7 +110,7 @@ def cleanup_expired_data(self, days: int = 30) -> Dict[str, Any]:
 
 def _cleanup_expired_projects(db: SessionLocal, days: int) -> int:
     """清理过期项目"""
-    cutoff_date = datetime.utcnow() - timedelta(days=days)
+    cutoff_date = utcnow() - timedelta(days=days)
     
     # 查找过期的已完成项目
     expired_projects = db.query(Project).filter(
@@ -329,7 +327,7 @@ def check_data_consistency(self) -> Dict[str, Any]:
                 })
             
             return {
-                'timestamp': datetime.utcnow().isoformat(),
+                'timestamp': utcnow().isoformat(),
                 'total_issues': len(issues),
                 'issues': issues,
                 'status': 'healthy' if len(issues) == 0 else 'unhealthy'
@@ -359,7 +357,7 @@ def cleanup_orphaned_data(self) -> Dict[str, Any]:
         
         try:
             cleanup_results = {
-                'timestamp': datetime.utcnow().isoformat(),
+                'timestamp': utcnow().isoformat(),
                 'orphaned_tasks_cleaned': 0,
                 'orphaned_clips_cleaned': 0,
                 'orphaned_collections_cleaned': 0,

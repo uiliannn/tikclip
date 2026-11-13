@@ -85,8 +85,8 @@ def submit_video_pipeline_task(project_id: str, input_video_path: str, input_srt
         logger.info(f"提交视频流水线任务: {project_id}")
         
         # 直接使用celery_app提交任务
-        logger.info(f"准备提交任务到队列...")
-        logger.info(f"任务名称: backend.tasks.processing.process_video_pipeline")
+        logger.info("准备提交任务到队列...")
+        logger.info("任务名称: backend.tasks.processing.process_video_pipeline")
         logger.info(f"任务参数: {[project_id, input_video_path, input_srt_path]}")
         
         celery_task = celery_app.send_task(

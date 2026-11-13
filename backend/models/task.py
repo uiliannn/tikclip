@@ -2,9 +2,9 @@
 任务模型
 定义后台任务的基本信息和执行状态
 """
+from backend.utils.time_utils import utcnow
 
 import enum
-from datetime import datetime
 from sqlalchemy import Column, String, Integer, Float, ForeignKey, Enum, JSON, DateTime, Text
 from sqlalchemy.orm import relationship
 from .base import BaseModel, TimestampMixin
@@ -150,19 +150,19 @@ class Task(BaseModel, TimestampMixin):
         if self.started_at and self.completed_at:
             return (self.completed_at - self.started_at).total_seconds()
         elif self.started_at:
-            return (datetime.utcnow() - self.started_at).total_seconds()
+            return (utcnow() - self.started_at).total_seconds()
         return 0
     
     def start(self):
         """开始任务"""
         self.status = TaskStatus.RUNNING
-        self.started_at = datetime.utcnow()
+        self.started_at = utcnow()
         self.progress = 0.0
     
     def complete(self, result_data=None):
         """完成任务"""
         self.status = TaskStatus.COMPLETED
-        self.completed_at = datetime.utcnow()
+        self.completed_at = utcnow()
         self.progress = 100.0
         if result_data:
             self.result_data = result_data
@@ -170,13 +170,13 @@ class Task(BaseModel, TimestampMixin):
     def fail(self, error_message):
         """任务失败"""
         self.status = TaskStatus.FAILED
-        self.completed_at = datetime.utcnow()
+        self.completed_at = utcnow()
         self.error_message = error_message
     
     def cancel(self):
         """取消任务"""
         self.status = TaskStatus.CANCELLED
-        self.completed_at = datetime.utcnow()
+        self.completed_at = utcnow()
     
     def update_progress(self, progress, current_step=None):
         """更新进度"""
@@ -184,24 +184,22 @@ class Task(BaseModel, TimestampMixin):
         if current_step:
             self.current_step = current_step
     
-    def is_completed(self):
-        """检查是否完成"""
-        return self.status in [TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.CANCELLED]
-    
-    def is_running(self):
-        """检查是否运行中"""
-        return self.status == TaskStatus.RUNNING
-    
+    @property
     def is_pending(self):
-        """检查是否待处理"""
+        """是否待处理"""
         return self.status == TaskStatus.PENDING
+
+    @property
+    def is_finished(self):
+        """是否已结束（完成、失败或取消）"""
+        return self.status in (TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.CANCELLED)
     
     def get_duration(self):
         """获取任务持续时间"""
         if not self.started_at:
             return None
         
-        end_time = self.completed_at or datetime.utcnow()
+        end_time = self.completed_at or utcnow()
         return (end_time - self.started_at).total_seconds()
     
     def to_dict(self):

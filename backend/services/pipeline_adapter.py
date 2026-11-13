@@ -2,6 +2,7 @@
 Pipeline适配器
 负责协调6步流水线处理流程，提供统一的接口
 """
+from backend.utils.time_utils import utcnow
 
 import logging
 import asyncio
@@ -9,12 +10,11 @@ import json
 import os
 from pathlib import Path
 from typing import Dict, Any, Optional, List, Callable
-from datetime import datetime
 from sqlalchemy.orm import Session
 
 from ..core.database import SessionLocal
 from ..models.project import Project
-from ..models.task import Task, TaskStatus
+from ..models.task import Task
 from ..core.shared_config import config_manager, get_prompt_files
 from ..pipeline.step1_outline import run_step1_outline
 from ..pipeline.step2_timeline import run_step2_timeline
@@ -130,7 +130,7 @@ class PipelineAdapter:
         try:
             self.close()
         except Exception:
-            pass
+            logger.debug("excecao ignorada", exc_info=True)
 
     def _video_category(self) -> str:
         """读项目分类。自有会话读完就结束事务，避免后面的长步骤占着连接。"""
@@ -145,7 +145,7 @@ class PipelineAdapter:
             try:
                 self.db.rollback()
             except Exception:
-                pass
+                logger.debug("excecao ignorada", exc_info=True)
         return category
 
     def validate_pipeline_prerequisites(self) -> List[str]:
@@ -540,7 +540,7 @@ class PipelineAdapter:
             if task:
                 task.progress = progress
                 task.current_step = message
-                task.updated_at = datetime.utcnow()
+                task.updated_at = utcnow()
                 self.db.commit()
                 logger.info(f"任务 {self.task_id} 进度已更新: {progress}% - {message}")
             
@@ -583,7 +583,6 @@ class PipelineAdapter:
         try:
             from ..models.clip import Clip, ClipStatus
             from ..models.collection import Collection, CollectionStatus
-            from datetime import datetime
             
             # 清理现有数据
             self.db.query(Clip).filter(Clip.project_id == self.project_id).delete()
@@ -630,8 +629,8 @@ class PipelineAdapter:
                                 'content': clip_data.get('content', []),
                                 'chunk_index': clip_data.get('chunk_index', 0)
                             },
-                            created_at=datetime.utcnow(),
-                            updated_at=datetime.utcnow()
+                            created_at=utcnow(),
+                            updated_at=utcnow()
                         )
                         
                         self.db.add(clip)
@@ -680,8 +679,8 @@ class PipelineAdapter:
                                 'simplified_clip_ids': simplified_clip_ids,  # 保留原始简化ID
                                 'generated_by': 'pipeline'
                             },
-                            created_at=datetime.utcnow(),
-                            updated_at=datetime.utcnow()
+                            created_at=utcnow(),
+                            updated_at=utcnow()
                         )
                         
                         self.db.add(collection)
@@ -715,7 +714,7 @@ class PipelineAdapter:
                 return hours * 3600 + minutes * 60 + seconds
             else:
                 return 0.0
-        except:
+        except Exception:  # noqa: BLE001
             return 0.0
 
 def create_pipeline_adapter(db: Session, task_id: str, project_id: str, progress_callback: Optional[Callable] = None) -> PipelineAdapter:

@@ -12,8 +12,6 @@ from typing import Dict, Any, Optional
 from dataclasses import dataclass
 from enum import Enum
 
-from ..models.project import ProjectType
-from ..core.database import get_db
 from ..core.path_utils import get_projects_directory
 
 logger = logging.getLogger(__name__)
@@ -328,7 +326,6 @@ class ProjectConfigManager:
         """获取项目配置"""
         # 尝试从数据库获取项目配置
         try:
-            from sqlalchemy.orm import Session
             from ..core.database import SessionLocal
             from ..models.project import Project
             

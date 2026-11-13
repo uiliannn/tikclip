@@ -2,10 +2,10 @@
 WebSocket通知服务
 提供实时通知功能
 """
+from backend.utils.time_utils import utcnow
 
 import logging
 from typing import Dict, Any, Optional
-from datetime import datetime
 
 from ..core.websocket_manager import manager, WebSocketMessage
 
@@ -141,7 +141,7 @@ class WebSocketNotificationService:
                 'total_steps': total_steps,
                 'step_name': step_name,
                 'message': message,
-                'timestamp': datetime.utcnow().isoformat()
+                'timestamp': utcnow().isoformat()
             }
             
             logger.info(f"准备发送进度通知: {notification}")

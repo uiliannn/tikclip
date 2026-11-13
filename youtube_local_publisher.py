@@ -78,7 +78,7 @@ def list_accounts() -> list[dict[str, Any]]:
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(json.dumps(accounts, indent=2, ensure_ascii=False), encoding="utf-8")
         except Exception:
-            pass
+            logger.debug("excecao ignorada", exc_info=True)
 
     return accounts
 
@@ -235,7 +235,7 @@ def _dismiss_popups(page) -> None:
                 el.click()
                 time.sleep(0.3)
         except Exception:
-            pass
+            logger.debug("excecao ignorada", exc_info=True)
 
 
 def login_session(
@@ -291,7 +291,7 @@ def login_session(
                                 time.sleep(2)
                                 return True
                         except Exception:
-                            pass
+                            logger.debug("excecao ignorada", exc_info=True)
 
                 # Se a janela foi fechada pelo usuário
                 if page.is_closed():
@@ -302,7 +302,7 @@ def login_session(
             try:
                 context.close()
             except Exception:
-                pass
+                logger.debug("excecao ignorada", exc_info=True)
             _clean_browser_blobs(p_dir)
 
 
@@ -316,7 +316,7 @@ def _clean_browser_blobs(profile_path: Path) -> None:
                 if entry.name.endswith(".indexeddb.blob"):
                     shutil.rmtree(entry, ignore_errors=True)
     except Exception:
-        pass
+        logger.debug("excecao ignorada", exc_info=True)
 
 
 def _get_ffmpeg_paths() -> tuple[str, str]:
@@ -437,7 +437,7 @@ def publish_video(
             try:
                 progress(msg)
             except Exception:
-                pass
+                logger.debug("excecao ignorada", exc_info=True)
         logger.info("[YouTube Publisher] %s", msg)
 
     # Se marcado como Shorts, verifica se o vídeo é horizontal.
@@ -581,7 +581,7 @@ def publish_video(
             try:
                 page.locator("ytcp-uploads-dialog").first.wait_for(state="attached", timeout=45000)
             except Exception:
-                pass
+                logger.debug("excecao ignorada", exc_info=True)
 
             # Aguarda diretamente o campo de título estar visível e interativo
             title_input = page.locator(
@@ -610,7 +610,7 @@ def publish_video(
             try:
                 title_input.fill(final_title)
             except Exception:
-                pass
+                logger.debug("excecao ignorada", exc_info=True)
             time.sleep(0.5)
 
             # 2. PREENCHIMENTO DA DESCRIÇÃO
@@ -636,7 +636,7 @@ def publish_video(
                         try:
                             desc_input.fill(final_description)
                         except Exception:
-                            pass
+                            logger.debug("excecao ignorada", exc_info=True)
                         time.sleep(0.5)
                 except Exception as exc:
                     _prog(f"Aviso ao preencher descrição: {exc}")
@@ -708,7 +708,7 @@ def publish_video(
                     if video_url:
                         video_id = video_url.rstrip("/").split("/")[-1]
             except Exception:
-                pass
+                logger.debug("excecao ignorada", exc_info=True)
 
             # 7. AVANÇAR ETAPAS ("Próximo" / "Avançar")
             _prog("Avançando para as etapas de elementos, verificações e visibilidade...")
@@ -764,7 +764,7 @@ def publish_video(
                         if video_url:
                             video_id = video_url.rstrip("/").split("/")[-1]
                 except Exception:
-                    pass
+                    logger.debug("excecao ignorada", exc_info=True)
 
             # 9. SALVAR / PUBLICAR
             _prog("Publicando o vídeo no YouTube Studio...")
@@ -835,7 +835,7 @@ def publish_video(
                             clicked_anyway = True
                             break
                     except Exception:
-                        pass
+                        logger.debug("excecao ignorada", exc_info=True)
                 if clicked_anyway:
                     break
 
@@ -847,7 +847,7 @@ def publish_video(
                     if close_test.is_visible(timeout=500):
                         break
                 except Exception:
-                    pass
+                    logger.debug("excecao ignorada", exc_info=True)
 
                 time.sleep(1)
 
@@ -868,11 +868,11 @@ def publish_video(
                                 if video_url:
                                     video_id = video_url.rstrip("/").split("/")[-1]
                         except Exception:
-                            pass
+                            logger.debug("excecao ignorada", exc_info=True)
                     close_btn.click()
                     time.sleep(1)
             except Exception:
-                pass
+                logger.debug("excecao ignorada", exc_info=True)
 
             final_link_msg = f" (Link: {video_url})" if video_url else ""
             _prog(f"Vídeo publicado com sucesso no YouTube Studio!{final_link_msg} [OK]")
@@ -891,10 +891,10 @@ def publish_video(
             try:
                 context.close()
             except Exception:
-                pass
+                logger.debug("excecao ignorada", exc_info=True)
             _clean_browser_blobs(p_dir)
             if temp_converted and temp_converted.is_file():
                 try:
                     temp_converted.unlink(missing_ok=True)
                 except Exception:
-                    pass
+                    logger.debug("excecao ignorada", exc_info=True)

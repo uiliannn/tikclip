@@ -176,7 +176,7 @@ def transcribe(video: Path, output: Path | None, settings, language='auto', time
                     pool.shutdown(wait=True, cancel_futures=True)
         except httpx.HTTPStatusError as exc:
             raise CloudTranscriptionError(f'云端转写请求失败（HTTP {exc.response.status_code}），请检查密钥、额度和模型权限。') from None
-        except (httpx.RequestError, ValueError) as exc:
+        except (httpx.RequestError, ValueError):
             raise CloudTranscriptionError('云端转写连接失败或响应格式无效，请稍后重试。') from None
         if not segments:
             raise CloudTranscriptionError('转写结果为空，音频中可能没有可识别的人声。')

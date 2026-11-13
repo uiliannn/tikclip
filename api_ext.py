@@ -10,9 +10,12 @@ reusando o mesmo motor que o publicador original usava:
 """
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 import base64
 import hashlib
-import io
 import json
 import os
 import re
@@ -26,11 +29,11 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, File, HTTPException, UploadFile
-from fastapi.responses import FileResponse, JSONResponse, Response
+from fastapi.responses import FileResponse, Response
 
 from backend.services import tiktok_local_publisher as ttl
-from backend.services.studio import store
 from backend.services.upload_post_publisher import LOCAL_USER, _write_record, list_records
+
 
 router = APIRouter()
 
@@ -68,7 +71,7 @@ def _project_rows() -> dict[str, tuple[str | None, str | None]]:
         finally:
             con.close()
     except Exception:
-        pass
+        logger.debug("excecao ignorada", exc_info=True)
     return rows
 
 
@@ -91,7 +94,7 @@ def _published_keys(pid: str) -> dict[str, dict[str, Any]]:
                 if key:
                     keys[key] = rec
     except Exception:
-        pass
+        logger.debug("excecao ignorada", exc_info=True)
     return keys
 
 
@@ -213,7 +216,7 @@ def ext_status() -> dict[str, Any]:
     try:
         accounts = ttl.list_accounts()
     except Exception:
-        pass
+        logger.debug("excecao ignorada", exc_info=True)
     return {
         'ok': True,
         'data_dir': str(base),
@@ -281,7 +284,7 @@ def ext_project_thumb(pid: str) -> Response:
         try:
             return Response(content=base64.b64decode(payload), media_type='image/jpeg')
         except Exception:
-            pass
+            logger.debug("excecao ignorada", exc_info=True)
     cover = _cover_path_any(pid)
     if cover:
         return Response(content=cover.read_bytes(), media_type='image/jpeg')
@@ -300,6 +303,59 @@ def ext_project_clips(pid: str) -> dict[str, Any]:
         'published': sum(1 for c in clips if c['status'] == 'publicado'),
         'ready': sum(1 for c in clips if c['status'] in ('pronto', 'publicado')),
     }
+
+
+@router.delete('/projects/{pid}/clips/{vid}')
+def ext_delete_clip(pid: str, vid: str) -> dict[str, Any]:
+    """Apaga um corte já renderizado (arquivo, capa e registro no studio.json).
+
+    É o que o botão "Limpar publicados" da biblioteca usa. Remove **apenas** o
+    corte informado: os outros, publicados ou não, ficam intactos. O histórico
+    de publicação é preservado — o corte só deixa de aparecer na biblioteca e
+    o arquivo sai do disco.
+    """
+    from backend.services.studio import store
+
+    raiz = projects_dir() / pid
+    if not raiz.is_dir():
+        raise HTTPException(status_code=404, detail='Projeto não encontrado')
+
+    estado = _read_studio(pid)
+    variant = next((v for v in estado.get('output_variants', []) if v.get('id') == vid), None)
+    if variant is None:
+        raise HTTPException(status_code=404, detail='Corte não encontrado')
+    if variant.get('status') in ('queued', 'preparing', 'running', 'rendering'):
+        raise HTTPException(status_code=409, detail='Este corte ainda está sendo renderizado')
+
+    job_id = variant.get('render_job_id')
+    capa = _cover_path(pid, job_id, vid)
+
+    def update(data):
+        variants = data.get('output_variants') or []
+        alvo = next((v for v in variants if v.get('id') == vid), None)
+        if alvo is None:
+            raise HTTPException(status_code=404, detail='Corte não encontrado')
+        variants.remove(alvo)
+
+    store.change(pid, update)
+
+    apagados: list[str] = []
+    candidatos: list[Path] = []
+    if job_id:
+        candidatos.append(raiz / 'output' / 'studio' / f'{job_id}.mp4')
+    if capa:
+        candidatos.append(Path(capa))
+    for caminho in candidatos:
+        try:
+            alvo = Path(caminho).resolve()
+            # nunca apagar fora da pasta do projeto
+            if alvo.is_file() and raiz.resolve() in alvo.parents:
+                alvo.unlink()
+                apagados.append(alvo.name)
+        except OSError:
+            pass
+
+    return {'removed': True, 'variant_id': vid, 'files': apagados}
 
 
 @router.get('/projects/{pid}/clips/{vid}/cover')
@@ -373,7 +429,7 @@ def ext_connect(account_id: str) -> dict[str, Any]:
         try:
             ttl.login_session(account=account_id)
         except Exception:
-            pass
+            logger.debug("excecao ignorada", exc_info=True)
         # guarda o IP de onde a sessão nasceu: publicar de outro IP derruba o login
         ip = _ip_publico()
         if ip:
@@ -704,6 +760,7 @@ def _ip_publico() -> str | None:
                 _IP_CACHE.update(ip=ip, quando=agora)
                 return ip
         except Exception:
+            logger.debug("excecao ignorada", exc_info=True)
             continue
     return None
 
@@ -727,6 +784,75 @@ def _gravar_sessao_ip(conta: str, ip: str) -> None:
             json.dumps(dados, ensure_ascii=False, indent=2), encoding='utf-8')
     except OSError:
         pass
+
+
+# --------------------------------------------------------------------------- #
+# disparo automático — configuração global (Configurações > Biblioteca)
+# --------------------------------------------------------------------------- #
+def _auto_publish_path() -> Path:
+    return data_dir() / 'auto_publish.json'
+
+
+def ler_auto_publish() -> dict[str, Any]:
+    """Config global: ligado/desligado + intervalo (min) entre publicações."""
+    padrao = {'enabled': False, 'interval_min': 30}
+    try:
+        caminho = _auto_publish_path()
+        if not caminho.is_file():
+            return padrao
+        dados = json.loads(caminho.read_text(encoding='utf-8'))
+        if not isinstance(dados, dict):
+            return padrao
+        intervalo = int(dados.get('interval_min') or padrao['interval_min'])
+        return {
+            'enabled': bool(dados.get('enabled')),
+            'interval_min': max(1, min(1440, intervalo)),
+        }
+    except (OSError, ValueError, TypeError):
+        return padrao
+
+
+def salvar_auto_publish(enabled: bool, interval_min: int) -> dict[str, Any]:
+    intervalo = max(1, min(1440, int(interval_min or 30)))
+    caminho = _auto_publish_path()
+    caminho.parent.mkdir(parents=True, exist_ok=True)
+    caminho.write_text(
+        json.dumps({'enabled': bool(enabled), 'interval_min': intervalo},
+                   ensure_ascii=False, indent=2),
+        encoding='utf-8',
+    )
+    return {'enabled': bool(enabled), 'interval_min': intervalo}
+
+
+def auto_publish_travado_por_env() -> bool:
+    """Trava dura por variável de ambiente, para subir sem publicar nada."""
+    return os.getenv('TIKCLIP_DISABLE_AUTO_PUBLISH', '').strip().lower() in (
+        '1', 'true', 'yes', 'on')
+
+
+@router.get('/auto-publish')
+def ext_auto_publish_get() -> dict[str, Any]:
+    return {
+        **ler_auto_publish(),
+        'env_locked': auto_publish_travado_por_env(),
+        'publishing': bool(_PUB.get('running')),
+    }
+
+
+@router.put('/auto-publish')
+def ext_auto_publish_put(payload: dict[str, Any] | None = None) -> dict[str, Any]:
+    dados = payload or {}
+    cfg = salvar_auto_publish(bool(dados.get('enabled')), dados.get('interval_min') or 30)
+    _pub_log(
+        "⚙️ Disparo automático "
+        + ("ATIVADO" if cfg['enabled'] else "TRAVADO")
+        + f" (intervalo {cfg['interval_min']} min)"
+    )
+    return {
+        **cfg,
+        'env_locked': auto_publish_travado_por_env(),
+        'publishing': bool(_PUB.get('running')),
+    }
 
 
 @router.post('/publish/batch')
@@ -778,7 +904,15 @@ def ext_publish_state() -> dict[str, Any]:
         if _PUB.get('running') and not vivo:
             _PUB['running'] = False
             _PUB['stop'] = False
-        return {k: (list(v) if isinstance(v, list) else v) for k, v in _PUB.items()}
+        estado = {k: (list(v) if isinstance(v, list) else v) for k, v in _PUB.items()}
+    # O modo história publica pelo próprio caminho (TikTok e YouTube); o estado
+    # dele aparece aqui como um bloco à parte, sem mexer no lote do TikTok.
+    try:
+        from backend.services.fiction import publish as fiction_publish
+        estado['fiction'] = fiction_publish.state()
+    except Exception:  # noqa: BLE001 - o estado do lote nunca depende do modo história
+        logger.debug("excecao ignorada", exc_info=True)
+    return estado
 
 
 @router.post('/publish/stop')
@@ -786,6 +920,111 @@ def ext_publish_stop() -> dict[str, Any]:
     with _PUB_LOCK:
         _PUB['stop'] = True
     return {'stopping': True}
+
+
+# --------------------------------------------------------------------------- #
+# modo história: vídeo vertical gerado do zero (roteiro -> imagens -> vozes)
+# Caminho adicional: não corta, não dubla e não traduz nada do material original.
+# --------------------------------------------------------------------------- #
+def _fiction():
+    from backend.services.fiction import projects as fiction_projects
+    return fiction_projects
+
+
+@router.post('/fiction/build')
+def ext_fiction_build(payload: dict[str, Any]) -> dict[str, Any]:
+    """Cria (ou continua) uma história: roteiro, 6 imagens, 3 vozes e render."""
+    from backend.services.fiction import script as fiction_script
+
+    data = payload or {}
+    # Clone de voz de pessoa real é recusado aqui, na entrada do modo.
+    try:
+        fiction_script.reject_voice_cloning(data)
+    except fiction_script.ScriptError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+    theme = str(data.get('theme') or '').strip()
+    if not theme:
+        raise HTTPException(status_code=400, detail='Escreva o tema da história')
+    if len(theme) > 300:
+        raise HTTPException(status_code=400, detail='O tema aceita no máximo 300 caracteres')
+    project_id = str(data.get('project_id') or '').strip() or _fiction().new_project_id()
+    if not re.fullmatch(r'[a-zA-Z0-9_-]{1,100}', project_id):
+        raise HTTPException(status_code=400, detail='ID de projeto inválido')
+    platforms = [str(p) for p in (data.get('platforms') or ['tiktok'])]
+    palette = str(data.get('palette') or 'azure')
+    try:
+        return _fiction().start(project_id, theme=theme, platforms=platforms, palette=palette)
+    except _fiction().BuildError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
+
+
+@router.get('/fiction/state/{pid}')
+def ext_fiction_state(pid: str) -> dict[str, Any]:
+    if not (projects_dir() / pid).is_dir():
+        raise HTTPException(status_code=404, detail='Projeto não encontrado')
+    return _fiction().state(pid)
+
+
+@router.get('/fiction/projects')
+def ext_fiction_projects() -> dict[str, Any]:
+    return {'items': _fiction().list_projects()}
+
+
+@router.get('/fiction/player/{pid}')
+def ext_fiction_player(pid: str) -> Response:
+    """A mesma composição que foi renderizada, para conferir no navegador."""
+    try:
+        html = _fiction().player_file(pid)
+    except Exception as error:  # noqa: BLE001 - timeline ausente/inválida
+        raise HTTPException(status_code=404, detail=str(error)[:300]) from error
+    return Response(content=html, media_type='text/html; charset=utf-8')
+
+
+@router.get('/fiction/video/{pid}')
+def ext_fiction_video(pid: str) -> FileResponse:
+    from backend.services.fiction import projects as fiction_projects
+
+    video = fiction_projects.video_path(pid)
+    if video is None:
+        raise HTTPException(status_code=404, detail='Esta história ainda não tem vídeo')
+    # Sem `filename`: com ele o FastAPI manda Content-Disposition "attachment" e o
+    # <video> da tela não toca. O download continua disponível pela UI.
+    return FileResponse(str(video), media_type='video/mp4')
+
+
+@router.post('/fiction/publish')
+def ext_fiction_publish(payload: dict[str, Any]) -> dict[str, Any]:
+    """Publica a história pelos publicadores locais (TikTok e/ou YouTube)."""
+    from backend.services.fiction import publish as fiction_publish
+
+    data = payload or {}
+    project_id = str(data.get('project_id') or '').strip()
+    if not project_id:
+        raise HTTPException(status_code=400, detail='project_id obrigatório')
+    try:
+        return fiction_publish.start(
+            project_id,
+            platforms=[str(p) for p in (data.get('platforms') or ['tiktok'])],
+            tiktok_account=data.get('tiktok_account') or data.get('account_id') or 'default',
+            youtube_account=data.get('youtube_account') or 'default',
+            interval_sec=int(data.get('interval_sec') or 30),
+        )
+    except fiction_publish.PublishError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
+
+
+@router.get('/fiction/publish/state')
+def ext_fiction_publish_state() -> dict[str, Any]:
+    from backend.services.fiction import publish as fiction_publish
+
+    return {**fiction_publish.state(), 'env_locked': fiction_publish.env_locked()}
+
+
+@router.post('/fiction/publish/stop')
+def ext_fiction_publish_stop() -> dict[str, Any]:
+    from backend.services.fiction import publish as fiction_publish
+
+    return fiction_publish.stop()
 
 
 # --------------------------------------------------------------------------- #
@@ -1348,7 +1587,7 @@ def ext_clip_edit_save(pid: str, vid: str, body: dict[str, Any]) -> dict[str, An
 
 
 @router.post('/projects/{pid}/clips/{vid}/cover')
-def ext_clip_cover(pid: str, vid: str) -> dict[str, Any]:
+def ext_clip_cover_upload(pid: str, vid: str) -> dict[str, Any]:
     """Pede uma capa nova (IA) para o corte e devolve o estado do pedido."""
     import requests
 

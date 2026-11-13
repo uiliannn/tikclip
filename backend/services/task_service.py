@@ -3,13 +3,12 @@
 提供任务相关的业务逻辑操作
 """
 
-from typing import List, Optional, Dict, Any
+from typing import List, Optional
 from sqlalchemy.orm import Session
 from ..services.base import BaseService
 from ..repositories.task_repository import TaskRepository
 from ..models.task import Task
-from ..schemas.task import TaskCreate, TaskUpdate, TaskResponse, TaskListResponse, TaskFilter
-from ..schemas.base import PaginationParams, PaginationResponse
+from ..schemas.task import TaskCreate, TaskUpdate, TaskResponse
 
 
 class TaskService(BaseService[Task, TaskCreate, TaskUpdate, TaskResponse]):

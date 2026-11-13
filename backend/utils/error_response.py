@@ -2,8 +2,9 @@
 统一错误响应格式
 提供标准化的错误响应结构和用户友好的错误消息
 """
+from backend.utils.time_utils import utcnow
 
-from typing import Any, Dict, Optional, Union
+from typing import Any, Dict, Optional
 from enum import Enum
 from datetime import datetime
 import traceback
@@ -82,7 +83,7 @@ class ErrorResponse:
         self.details = details or {}
         self.level = level
         self.request_id = request_id or str(uuid.uuid4())
-        self.timestamp = timestamp or datetime.utcnow()
+        self.timestamp = timestamp or utcnow()
     
     def _get_user_friendly_message(self, error_code: ErrorCode, message: str) -> str:
         """获取用户友好的错误消息"""

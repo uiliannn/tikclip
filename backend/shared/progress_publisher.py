@@ -6,8 +6,7 @@
 import json
 import time
 import logging
-import asyncio
-from typing import Dict, Any, Optional
+from typing import Optional
 import redis.asyncio as redis
 from .progress_channels import project_progress_channel
 from ..core.config import get_redis_url

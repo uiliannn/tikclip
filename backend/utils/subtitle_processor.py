@@ -2,7 +2,7 @@ import logging
 import re
 import uuid
 from pathlib import Path
-from typing import List, Dict, Optional, Tuple
+from typing import List, Dict, Tuple
 import pysrt
 from pysrt import SubRipItem, SubRipTime
 

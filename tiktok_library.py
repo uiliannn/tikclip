@@ -6,6 +6,10 @@ e publicar vídeos diretamente nas contas do TikTok conectadas.
 """
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 import json
 import os
 import re
@@ -16,6 +20,7 @@ import urllib.parse
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Optional
+
 
 # Diretório base dos downloads do projeto tiktok-downloader-web
 TIKTOK_DOWNLOADS_DIR = Path(r"C:\Users\Uilian\.gemini\antigravity\scratch\tiktok-downloader-web\downloads")
@@ -43,7 +48,7 @@ def load_channels_accounts() -> dict[str, str]:
         if p.exists():
             return json.loads(p.read_text(encoding='utf-8'))
     except Exception:
-        pass
+        logger.debug("excecao ignorada", exc_info=True)
     return {}
 
 
@@ -56,7 +61,7 @@ def save_channel_account(folder: str, account_id: str) -> None:
     try:
         _channels_accounts_file().write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding='utf-8')
     except Exception:
-        pass
+        logger.debug("excecao ignorada", exc_info=True)
 
 
 def _load_history() -> dict[str, Any]:
@@ -65,7 +70,7 @@ def _load_history() -> dict[str, Any]:
         if p.exists():
             return json.loads(p.read_text(encoding='utf-8'))
     except Exception:
-        pass
+        logger.debug("excecao ignorada", exc_info=True)
     return {}
 
 
@@ -73,7 +78,7 @@ def _save_history(history: dict[str, Any]) -> None:
     try:
         _history_file().write_text(json.dumps(history, ensure_ascii=False, indent=2), encoding='utf-8')
     except Exception:
-        pass
+        logger.debug("excecao ignorada", exc_info=True)
 
 
 def mark_video_published(video_id: str, account_id: str, status: str = 'completed') -> None:
@@ -159,7 +164,7 @@ def list_tiktok_creators() -> list[dict[str, Any]]:
                 if cid:
                     channels_meta[cid] = item
         except Exception:
-            pass
+            logger.debug("excecao ignorada", exc_info=True)
 
     history = _load_history()
     channel_accounts = load_channels_accounts()
@@ -378,7 +383,7 @@ def publish_tiktok_download_single(
             try:
                 progress_callback(msg)
             except Exception:
-                pass
+                logger.debug("excecao ignorada", exc_info=True)
 
     # Tenta localizar uma imagem de capa se existir (.jpg, .webp, .png)
     cover_file = None

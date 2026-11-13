@@ -3,13 +3,13 @@
 提供合集相关的业务逻辑操作
 """
 
-from typing import List, Optional, Dict, Any
+from typing import List, Optional
 from sqlalchemy.orm import Session
 from backend.services.base import BaseService
 from backend.repositories.collection_repository import CollectionRepository
 from backend.models.collection import Collection
 from backend.schemas.collection import CollectionCreate, CollectionUpdate, CollectionResponse, CollectionListResponse, CollectionFilter
-from backend.schemas.base import PaginationParams, PaginationResponse
+from backend.schemas.base import PaginationParams
 
 
 class CollectionService(BaseService[Collection, CollectionCreate, CollectionUpdate, CollectionResponse]):
@@ -58,7 +58,6 @@ class CollectionService(BaseService[Collection, CollectionCreate, CollectionUpda
         """删除合集并更新文件系统的删除记录"""
         import logging
         import json
-        from pathlib import Path
         from datetime import datetime
         from ..core.path_utils import get_project_directory
         

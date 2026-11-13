@@ -172,10 +172,10 @@ def _layout_filters(layout: str, w: Optional[int], h: Optional[int]) -> List[str
         return []
     if layout == "blur":
         return [
-            f"[0:v]split=2[bg][fg]",
+            "[0:v]split=2[bg][fg]",
             f"[bg]{blurred_backdrop(w, h)}[bg2]",
             f"[fg]scale={w}:-2[fg2]",
-            f"[bg2][fg2]overlay=(W-w)/2:(H-h)/2[base]",
+            "[bg2][fg2]overlay=(W-w)/2:(H-h)/2[base]",
         ]
     if layout == "crop":
         return [f"[0:v]scale={w}:{h}:force_original_aspect_ratio=increase,crop={w}:{h}[base]"]

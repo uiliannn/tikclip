@@ -3,9 +3,9 @@
 负责验证配置的有效性和完整性
 """
 import logging
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 from pathlib import Path
-from backend.core.desktop_config import SpeechRecognitionSettings, WhisperConfig, ApiConfig
+from backend.core.desktop_config import SpeechRecognitionSettings, WhisperConfig
 from backend.services.whisper_model_manager import get_model_manager, ModelStatus
 
 logger = logging.getLogger(__name__)

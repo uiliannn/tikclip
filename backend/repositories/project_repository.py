@@ -5,7 +5,7 @@
 
 from typing import List, Optional, Dict, Any
 from sqlalchemy.orm import Session
-from sqlalchemy import desc, asc
+from sqlalchemy import desc
 from pathlib import Path
 from .base import BaseRepository
 from ..models.project import Project, ProjectStatus, ProjectType

@@ -555,6 +555,12 @@ button, input, select, textarea {
   color: var(--accent-deepseek);
 }
 
+.sc-chip-ai.is-nvidia {
+  border-color: rgba(118, 185, 0, 0.45);
+  background: rgba(118, 185, 0, 0.14);
+  color: #76b900;
+}
+
 .sc-chip-badge {
   background: var(--primary-bg);
   color: var(--primary-fg);
@@ -1044,7 +1050,7 @@ button, input, select, textarea {
 /* CHAVE SELETORA GEMINI vs DEEPSEEK */
 .sc-ai-switch-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: 14px;
   margin-bottom: 20px;
 }

@@ -2,12 +2,9 @@
 视频处理任务
 """
 
-import os
 import logging
-from pathlib import Path
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, List
 from celery import shared_task
-from ..core.celery_app import celery_app
 
 logger = logging.getLogger(__name__)
 

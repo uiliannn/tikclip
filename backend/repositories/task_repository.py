@@ -2,11 +2,12 @@
 任务Repository
 提供任务相关的数据访问操作
 """
+from backend.utils.time_utils import utcnow
 
 from typing import List, Optional
 import logging
 from sqlalchemy.orm import Session
-from sqlalchemy import desc, asc, func
+from sqlalchemy import desc, asc
 from .base import BaseRepository
 from ..models.task import Task, TaskStatus, TaskType
 
@@ -300,8 +301,8 @@ class TaskRepository(BaseRepository[Task]):
         Returns:
             长时间运行的任务列表
         """
-        from datetime import datetime, timedelta
-        cutoff_time = datetime.utcnow() - timedelta(hours=max_duration_hours)
+        from datetime import timedelta
+        cutoff_time = utcnow() - timedelta(hours=max_duration_hours)
         
         return self.db.query(self.model).filter(
             self.model.status == TaskStatus.RUNNING,
@@ -318,9 +319,9 @@ class TaskRepository(BaseRepository[Task]):
         Returns:
             删除的任务数量
         """
-        from datetime import datetime, timedelta
-        cutoff_date = datetime.utcnow() - timedelta(days=days)
-        long_running_cutoff = datetime.utcnow() - timedelta(hours=24)
+        from datetime import timedelta
+        cutoff_date = utcnow() - timedelta(days=days)
+        long_running_cutoff = utcnow() - timedelta(hours=24)
         
         total_deleted = 0
         
@@ -344,7 +345,7 @@ class TaskRepository(BaseRepository[Task]):
             for task in long_running_tasks:
                 task.status = TaskStatus.FAILED
                 task.error_message = "任务超时，已自动标记为失败"
-                task.updated_at = datetime.utcnow()
+                task.updated_at = utcnow()
                 fixed_count += 1
                 logger.info(f"修复长时间运行任务: {task.id}")
             

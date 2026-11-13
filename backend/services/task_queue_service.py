@@ -9,13 +9,10 @@ from celery.result import AsyncResult
 from sqlalchemy.orm import Session
 
 from ..core.celery_app import celery_app
-from ..core.database import SessionLocal
-from ..models.task import Task, TaskStatus, TaskType
+from ..models.task import TaskStatus, TaskType
 from ..repositories.task_repository import TaskRepository
 from ..tasks.processing import process_video_pipeline, process_single_step, retry_processing_step
-from ..tasks.video import extract_video_clips, generate_video_collections, optimize_video_quality
-from ..tasks.notification import send_processing_notification, send_error_notification, send_completion_notification
-from ..tasks.maintenance import cleanup_expired_tasks, health_check, backup_project_data
+from ..tasks.video import extract_video_clips, generate_video_collections
 
 logger = logging.getLogger(__name__)
 

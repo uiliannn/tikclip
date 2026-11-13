@@ -10,16 +10,13 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import re
-import shutil
-import subprocess
 import threading
 import time
 import urllib.parse
 import urllib.request
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger("tikclip.tiktok_downloader")
 
@@ -141,7 +138,7 @@ def _download_via_tikwm_video(video_url: str, output_folder: Path) -> Optional[P
                 with urllib.request.urlopen(req_c, timeout=20) as resp_c:
                     (target_folder / f"{vid_id}_{clean_title}.jpg").write_bytes(resp_c.read())
             except Exception:
-                pass
+                logger.debug("excecao ignorada", exc_info=True)
 
         # Salva info.txt
         save_video_metadata(vid_path, {
@@ -229,7 +226,7 @@ def _run_download_worker(task_id: str, target: str, max_videos: int, folder_over
         out_folder.mkdir(parents=True, exist_ok=True)
         _update_task(creator_folder=channel_name)
 
-        _update_task(percent=15.0, status="baixando", message=f"Conectando ao TikTok e buscando vídeos...")
+        _update_task(percent=15.0, status="baixando", message="Conectando ao TikTok e buscando vídeos...")
 
         downloaded_list = []
 
@@ -255,7 +252,7 @@ def _run_download_worker(task_id: str, target: str, max_videos: int, folder_over
                     try:
                         save_video_metadata(p, info_dict)
                     except Exception:
-                        pass
+                        logger.debug("excecao ignorada", exc_info=True)
                     _update_task(
                         downloaded_files=list(downloaded_list),
                         message=f"Vídeo baixado: {p.name[:35]}..."

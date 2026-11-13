@@ -3,16 +3,15 @@ WebSocket网关服务
 订阅Redis进度事件并转发给前端WebSocket连接
 支持消息适配、快照回放、幂等订阅
 """
+from backend.utils.time_utils import utcnow
 
 import json
 import logging
 import asyncio
 from typing import Dict, Set, Any, Optional, Callable
-from datetime import datetime
 import redis.asyncio as redis
 from ..core.config import get_redis_url
 from ..core.websocket_manager import manager
-from .progress_event_service import ProgressEvent, progress_event_service
 from .progress_message_adapter import progress_adapter
 from .progress_snapshot_service import snapshot_service
 from ..shared.progress_channels import normalize_channel, project_progress_channel
@@ -217,7 +216,7 @@ class WebSocketGatewayService:
                         "seq": message_data.get("seq"),
                         "ts": message_data.get("ts"),
                         "meta": message_data.get("meta"),
-                        "timestamp": datetime.utcnow().isoformat()
+                        "timestamp": utcnow().isoformat()
                     }
                     
                     await manager.send_personal_message(ws_message, user_id)
@@ -237,7 +236,7 @@ class WebSocketGatewayService:
                 "type": "subscription_confirmed",
                 "task_id": task_id,
                 "message": f"已订阅任务 {task_id} 的进度更新",
-                "timestamp": datetime.utcnow().isoformat()
+                "timestamp": utcnow().isoformat()
             }, user_id)
             
             # 发送快照（如果存在）
@@ -282,7 +281,7 @@ class WebSocketGatewayService:
                 "type": "unsubscription_confirmed",
                 "task_id": task_id,
                 "message": f"已取消订阅任务 {task_id} 的进度更新",
-                "timestamp": datetime.utcnow().isoformat()
+                "timestamp": utcnow().isoformat()
             }, user_id)
             
             logger.debug(f"用户 {user_id} 已取消订阅任务 {task_id}")
@@ -341,8 +340,15 @@ class WebSocketGatewayService:
         logger.info(f"批量取消订阅完成: 用户 {user_id}, 移除 {len(results['removed'])}, 未订阅 {len(results['not_subscribed'])}")
         return results
 
-    async def sync_user_subscriptions(self, user_id: str, desired_task_ids: list[str]) -> dict:
-        """同步用户订阅集 - 幂等对齐"""
+    async def sync_task_subscriptions(self, user_id: str, desired_task_ids: list[str]) -> dict:
+        """同步用户订阅集 - 幂等对齐
+
+        Nome alterado de `sync_user_subscriptions` para não sobrescrever o
+        método de mesmo nome que sincroniza CANAIS (linha ~97). Como o Python
+        mantém apenas a última definição da classe, a versão de canais deixava
+        de existir e a chamada em websocket.py passava task_ids onde se
+        esperava nomes de canal.
+        """
         current_task_ids = list(self.user_subscriptions.get(user_id, set()))
         desired_set = set(desired_task_ids)
         current_set = set(current_task_ids)
@@ -442,7 +448,7 @@ class WebSocketGatewayService:
                     continue
                 
                 # 节流控制
-                current_time = datetime.utcnow().timestamp()
+                current_time = utcnow().timestamp()
                 current_progress = message_data.get("progress", 0)
                 
                 if channel in self.last_progress:

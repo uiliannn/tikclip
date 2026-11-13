@@ -4,7 +4,6 @@ Celery启动脚本
 启动Celery Worker和Beat调度器
 """
 
-import os
 import sys
 import subprocess
 import signal

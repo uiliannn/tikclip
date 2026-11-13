@@ -1,19 +1,17 @@
 """
 维护任务
 """
+from backend.utils.time_utils import utcnow
 
-import os
 import logging
 import shutil
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Dict, Any, List, Optional
-from celery import current_task, shared_task
+from typing import Dict, Any
+from celery import shared_task
 
-from ..core.celery_app import celery_app
 from ..core.database import SessionLocal
 from ..models.task import Task, TaskStatus
-from ..models.project import Project, ProjectStatus
 from ..repositories.task_repository import TaskRepository
 from ..repositories.project_repository import ProjectRepository
 
@@ -41,7 +39,7 @@ def cleanup_expired_tasks(self, days: int = 7) -> Dict[str, Any]:
             task_repo = TaskRepository(db)
             
             # 计算过期时间
-            expired_time = datetime.utcnow() - timedelta(days=days)
+            expired_time = utcnow() - timedelta(days=days)
             
             # 查找过期任务
             expired_tasks = db.query(Task).filter(
@@ -95,7 +93,7 @@ def health_check(self) -> Dict[str, Any]:
     
     try:
         health_status = {
-            'timestamp': datetime.utcnow().isoformat(),
+            'timestamp': utcnow().isoformat(),
             'status': 'healthy',
             'checks': {}
         }

@@ -8,7 +8,6 @@ nada é re-renderizado — o vídeo gerado já é o resultado final.
 """
 from __future__ import annotations
 
-import json
 import shutil
 import uuid
 from datetime import datetime, timezone

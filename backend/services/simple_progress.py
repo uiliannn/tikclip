@@ -61,7 +61,7 @@ class RedisProgressStore(ProgressStore):
         try:
             self.r.publish(f"progress:project:{project_id}", json.dumps(payload))
         except Exception:
-            pass
+            logger.debug("excecao ignorada", exc_info=True)
 
     def get(self, project_id: str) -> Optional[Dict[str, Any]]:
         h = self.r.hgetall(f"progress:project:{project_id}")

@@ -1,10 +1,10 @@
 """
 项目API路由
 """
+from backend.utils.time_utils import utcnow
 
 import logging
 from typing import List, Optional
-from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Form
 from sqlalchemy.orm import Session
 from backend.core.database import get_db
@@ -13,7 +13,6 @@ from backend.services.processing_service import ProcessingService
 from backend.services.websocket_notification_service import WebSocketNotificationService
 # 延迟导入，避免过早触发celery_app导入链
 # from backend.tasks.processing import process_video_pipeline
-from backend.core.websocket_manager import manager as websocket_manager
 from backend.schemas.project import (
     ProjectCreate, ProjectUpdate, ProjectResponse, ProjectListResponse, ProjectFilter,
     ProjectType, ProjectStatus
@@ -178,7 +177,7 @@ async def upload_files(
         
     except HTTPException:
         raise
-    except Exception as e:
+    except Exception:
         logger.exception("上传文件创建项目失败")
         raise HTTPException(status_code=500, detail="创建项目失败，请稍后重试")
 
@@ -208,7 +207,7 @@ async def create_project(
             total_collections=0,
             total_tasks=0
         )
-    except Exception as e:
+    except Exception:
         logger.exception("创建项目失败")
         raise HTTPException(status_code=500, detail="创建项目失败，请稍后重试")
 
@@ -250,7 +249,7 @@ async def get_projects(
             )
         
         return project_service.get_projects_paginated(pagination, filters)
-    except Exception as e:
+    except Exception:
         logger.exception("获取项目列表失败")
         raise HTTPException(status_code=500, detail="获取项目列表失败，请稍后重试")
 
@@ -302,7 +301,7 @@ async def get_project(
         return ProjectResponse(**response_data)
     except HTTPException:
         raise
-    except Exception as e:
+    except Exception:
         logger.exception("获取项目详情失败: %s", project_id)
         raise HTTPException(status_code=500, detail="获取项目详情失败，请稍后重试")
 
@@ -329,8 +328,8 @@ async def update_project(
             source_url=None,
             source_file=None,
             settings=project_data.settings or {},
-            created_at=datetime.utcnow(),
-            updated_at=datetime.utcnow(),
+            created_at=utcnow(),
+            updated_at=utcnow(),
             completed_at=None,
             total_clips=0,
             total_collections=0,
@@ -338,7 +337,7 @@ async def update_project(
         )
     except HTTPException:
         raise
-    except Exception as e:
+    except Exception:
         logger.exception("更新项目失败: %s", project_id)
         raise HTTPException(status_code=500, detail="更新项目失败，请稍后重试")
 
@@ -356,7 +355,7 @@ async def delete_project(
         return {"message": "Project and all related files deleted successfully"}
     except HTTPException:
         raise
-    except Exception as e:
+    except Exception:
         logger.exception("删除项目失败: %s", project_id)
         raise HTTPException(status_code=500, detail="删除项目失败，请稍后重试")
 
@@ -504,7 +503,7 @@ async def start_processing(
                 error=str(e),
                 step="initialization"
             )
-        except:
+        except Exception:  # noqa: BLE001
             pass
         logger.exception("启动项目处理失败: %s", project_id)
         raise HTTPException(status_code=500, detail="启动处理失败，请稍后重试")
@@ -673,7 +672,7 @@ async def retry_processing(
         
     except HTTPException:
         raise
-    except Exception as e:
+    except Exception:
         # 发送错误通知 - 已禁用WebSocket通知
         # try:
         #     await websocket_service.send_processing_error(
@@ -725,7 +724,7 @@ async def resume_processing(
             "start_step": start_step,
             "result": result
         }
-    except Exception as e:
+    except Exception:
         logger.exception("恢复项目处理失败: %s", project_id)
         raise HTTPException(status_code=500, detail="恢复处理失败，请稍后重试")
 
@@ -809,7 +808,7 @@ async def get_project_logs(
                 }
             ]
         }
-    except Exception as e:
+    except Exception:
         logger.exception("获取项目日志失败: %s", project_id)
         raise HTTPException(status_code=500, detail="获取项目日志失败，请稍后重试")
 
@@ -827,7 +826,6 @@ async def get_import_status(
             raise HTTPException(status_code=404, detail="Project not found")
         
         # 检查是否有正在进行的导入任务
-        from backend.celery_app import celery_app
         
         # 这里可以添加更复杂的任务状态检查逻辑
         # 目前简单返回项目状态
@@ -897,7 +895,6 @@ async def get_project_file(
 ):
     """Get a project file by filename."""
     try:
-        from pathlib import Path
         import json
         from fastapi.responses import FileResponse
         
@@ -941,7 +938,7 @@ async def get_project_file(
             )
     except HTTPException:
         raise
-    except Exception as e:
+    except Exception:
         logger.exception("获取项目文件失败: %s/%s", project_id, filename)
         raise HTTPException(status_code=500, detail="获取项目文件失败，请稍后重试")
 
@@ -955,7 +952,6 @@ async def get_project_clip(
     """Get a specific clip video file for a project."""
     try:
         from pathlib import Path
-        import os
         
         # 构建视频文件路径 - 使用正确的项目目录路径
         from ...core.path_utils import get_project_directory
@@ -1007,7 +1003,7 @@ async def get_project_clip(
         )
     except HTTPException:
         raise
-    except Exception as e:
+    except Exception:
         logger.exception("获取项目切片失败: %s/%s", project_id, clip_id)
         raise HTTPException(status_code=500, detail="获取切片文件失败，请稍后重试")
 
@@ -1145,7 +1141,6 @@ async def generate_collection_video(
         from ...utils.video_processor import VideoProcessor
         from ...core.path_utils import get_project_directory
         from pathlib import Path
-        import json
         
         # 验证项目是否存在
         project = project_service.get(project_id)

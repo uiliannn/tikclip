@@ -83,7 +83,6 @@ def create_app(mode: str = "web") -> FastAPI:
         logger.info(f"Iniciando o serviço da API do TikClip (modo: {mode})...")
         
         # 导入所有模型以确保表被创建
-        from backend.models.bilibili import BilibiliAccount, UploadRecord
         Base.metadata.create_all(bind=engine)
         logger.info("Tabelas do banco criadas")
         try:

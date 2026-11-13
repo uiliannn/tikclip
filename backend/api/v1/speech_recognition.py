@@ -8,22 +8,15 @@ from typing import Optional, List, Dict, Any
 import logging
 from backend.utils.speech_recognizer import (
     SpeechRecognitionMethod, 
-    SpeechRecognitionConfig, 
-    SpeechRecognizer,
-    generate_subtitle_for_video
+    SpeechRecognizer
 )
 from backend.core.desktop_config import (
     get_desktop_config, 
     save_desktop_config, 
-    DesktopConfig,
-    SpeechRecognitionSettings,
-    WhisperConfig,
-    ApiConfig
+    DesktopConfig
 )
 from backend.services.whisper_model_manager import (
     get_model_manager, 
-    WhisperModelManager,
-    ModelInfo,
     ModelStatus
 )
 from backend.services.speech_config_validator import get_config_validator

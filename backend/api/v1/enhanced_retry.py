@@ -14,10 +14,7 @@ from pydantic import BaseModel
 
 from ...core.database import get_db
 from ...models.project import Project, ProjectStatus
-from ...models.task import Task, TaskStatus, TaskType
-from ...services.project_service import ProjectService
 from ...services.processing_service import ProcessingService
-from ...core.config import get_data_directory
 
 logger = logging.getLogger(__name__)
 

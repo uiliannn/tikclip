@@ -1,23 +1,19 @@
 """视频处理Celery任务
 包含WebSocket实时通知和Pipeline适配器集成
 """
+from backend.utils.time_utils import utcnow
 
-import os
 import logging
 import asyncio
 from typing import Dict, Any, Optional
-from celery import current_task
-from pathlib import Path
 
 from backend.core.celery_app import celery_app
 from backend.services.websocket_notification_service import notification_service
 from backend.services.processing_service import ProcessingService
-from backend.services.pipeline_adapter import create_pipeline_adapter
 from backend.core.database import SessionLocal, session_scope
 from backend.core.project_cancellation import ProjectDeleted
 from backend.models.project import Project, ProjectStatus
 from backend.models.task import Task, TaskStatus, TaskType
-from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +25,6 @@ def run_async_notification(coro):
         if loop.is_running():
             # 如果事件循环正在运行，使用线程池执行
             import concurrent.futures
-            import threading
             
             def run_in_thread():
                 new_loop = asyncio.new_event_loop()
@@ -101,7 +96,7 @@ def process_video_pipeline(
         # 先记下任务行再关掉会话。流水线可能跑很久，不能占着连接（#175）。
         with session_scope() as db:
             task = Task(
-                name=f"视频处理流水线",
+                name="视频处理流水线",
                 description=f"处理项目 {project_id} 的完整视频流水线",
                 task_type=TaskType.VIDEO_PROCESSING,
                 project_id=project_id,
@@ -153,7 +148,7 @@ def process_video_pipeline(
 
                 if project and not clips_only:
                     project.status = ProjectStatus.FAILED
-                    project.updated_at = datetime.utcnow()
+                    project.updated_at = utcnow()
                     logger.info(f"项目状态已更新为失败: {project_id}")
 
                 db.commit()
@@ -185,8 +180,8 @@ def process_video_pipeline(
                 # 会让首页在成片出来前就显示「已完成」并停止轮询（RC156 Win QA #8）。
                 if project and not clips_only:
                     project.status = ProjectStatus.COMPLETED
-                    project.completed_at = datetime.utcnow()
-                    project.updated_at = datetime.utcnow()
+                    project.completed_at = utcnow()
+                    project.updated_at = utcnow()
                     logger.info(f"项目状态已更新为已完成: {project_id}")
 
                 db.commit()
@@ -227,7 +222,7 @@ def process_video_pipeline(
                     project = db.query(Project).filter(Project.id == project_id).first()
                     if project and not clips_only:
                         project.status = ProjectStatus.FAILED
-                        project.updated_at = datetime.utcnow()
+                        project.updated_at = utcnow()
                         logger.info(f"项目状态已更新为失败: {project_id}")
 
                     db.commit()

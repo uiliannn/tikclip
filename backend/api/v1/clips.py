@@ -2,7 +2,7 @@
 切片API路由
 """
 
-from typing import List, Optional
+from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from ...core.database import get_db
@@ -249,7 +249,6 @@ async def cleanup_duplicate_clips(
     try:
         from ...models.project import Project
         import json
-        from pathlib import Path
         from ...core.config import get_data_directory
         
         # 获取项目
@@ -324,7 +323,6 @@ async def resync_project_clips(
     try:
         from ...models.project import Project
         from ...services.data_sync_service import DataSyncService
-        from pathlib import Path
         from ...core.config import get_data_directory
         
         # 获取项目

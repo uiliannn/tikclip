@@ -1,0 +1,61 @@
+name: CI
+
+# Objetivo: pegar o que quebra em runtime (erro de sintaxe, nome indefinido,
+# import quebrado, regressão nas legendas) antes do merge — não impor um
+# estilo novo. O lint completo é executado como relatório, sem bloquear.
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  qualidade:
+    name: Python ${{ matrix.python }} / ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python: ["3.11", "3.13"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+
+      - name: Instalar dependências de teste
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install ruff pytest pytest-cov
+
+      - name: Compilar todo o projeto (erros de sintaxe)
+        run: python -m compileall -q . -x "(__pycache__|\.git)"
+
+      - name: Lint bloqueante (erros fatais)
+        run: python -m ruff check . --select E9,F63,F7,F82,F821 --output-format concise
+
+      - name: Lint completo (relatório, não bloqueia)
+        continue-on-error: true
+        run: python -m ruff check . --select E4,E7,F --statistics --exit-zero
+
+      - name: Testes + cobertura do módulo de legendas
+        # Gate só no módulo puro, que é 100% testável sem ffmpeg/rede.
+        # O resto do pipeline exige mídia e serviços externos: fica como
+        # relatório, não como bloqueio.
+        run: >
+          python -m pytest tests
+          --cov=backend.services.subtitle_timing
+          --cov-report=term-missing
+          --cov-fail-under=90

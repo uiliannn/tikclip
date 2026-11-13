@@ -4,7 +4,7 @@ Step 1: 大纲提取 - 从转写文本中提取结构性大纲
 import json
 import logging
 import re
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Optional
 from pathlib import Path
 
 # 导入依赖

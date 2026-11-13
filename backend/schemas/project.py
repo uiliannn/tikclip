@@ -5,7 +5,7 @@ Project-related Pydantic schemas.
 from datetime import datetime
 from typing import Optional, List
 from enum import Enum
-from pydantic import BaseModel, Field
+from pydantic import Field
 
 from .base import BaseSchema, PaginationResponse
 

@@ -2,11 +2,10 @@
 进度快照服务
 管理Redis快照存储和回放
 """
+from backend.utils.time_utils import utcnow
 
-import json
 import logging
-from typing import Dict, Any, Optional
-from datetime import datetime
+from typing import Optional
 import redis.asyncio as redis
 from ..core.config import get_redis_url
 
@@ -69,7 +68,7 @@ class ProgressSnapshotService:
             # 添加时间戳
             payload_with_ts = {
                 **payload,
-                "snapshot_timestamp": datetime.utcnow().isoformat()
+                "snapshot_timestamp": utcnow().isoformat()
             }
             
             # 保存到Redis Hash

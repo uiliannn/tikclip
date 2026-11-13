@@ -457,7 +457,7 @@ def _is_observer_process() -> bool:
                 if conn.laddr.port == port and conn.status == psutil.CONN_LISTEN:
                     return False  # We ARE the listening server process
         except Exception:
-            pass
+            logger.debug("excecao ignorada", exc_info=True)
         return True
     except Exception:
         return False

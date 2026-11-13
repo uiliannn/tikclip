@@ -1,13 +1,10 @@
-from typing import Dict, List, Optional, Tuple
-import asyncio
+from typing import Dict, List
 import logging
-from datetime import datetime, timedelta
-from sqlalchemy.orm import Session
-from sqlalchemy import select
+from datetime import datetime
 
 from ..core.database import session_scope
 from ..models.bilibili import BilibiliAccount
-from ..utils.crypto import decrypt_data, encrypt_data
+from ..utils.crypto import decrypt_data
 from ..core.celery_app import celery_app
 
 logger = logging.getLogger(__name__)

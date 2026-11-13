@@ -2,8 +2,7 @@
 处理API路由
 """
 
-from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from ...core.database import get_db
 from ...services.processing_service import ProcessingService

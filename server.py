@@ -8,6 +8,10 @@ reaproveitando:
 """
 from __future__ import annotations
 
+import logging
+
+logger = logging.getLogger(__name__)
+
 import os
 import socket
 import subprocess
@@ -18,10 +22,15 @@ import urllib.request
 import webbrowser
 from pathlib import Path
 
+
 HERE = Path(__file__).resolve().parent
 WEB_DIR = HERE / 'web'
 
-STUDIO_ROOT = Path(r'C:\Users\Uilian\Desktop\tikclip-studio')
+# Pasta do TikClip Studio (opcional). Antes era um caminho absoluto fixo, que
+# só existe na máquina do autor. Ordem: env var > pasta irmã do repositório.
+STUDIO_ROOT = Path(
+    os.environ.get('TIKCLIP_STUDIO_ROOT') or (HERE.parent / 'tikclip-studio')
+)
 STUDIO_APP = STUDIO_ROOT / 'app'
 STUDIO_RUNTIME = STUDIO_APP / 'runtime'
 
@@ -47,7 +56,7 @@ def _proteger_logging_utf8() -> None:
                     if hasattr(self, 'flush'):
                         self.flush()
             except Exception:
-                pass
+                logger.debug("excecao ignorada", exc_info=True)
 
     logging.StreamHandler.emit = _safe_emit
 
@@ -88,7 +97,7 @@ def _aprimorar_llm_manager() -> None:
     """Garante que o seletor Gemini vs DeepSeek funcione tanto via SDK nativo quanto via API OpenAI."""
     try:
         from backend.core import llm_manager as lm
-        from backend.core.llm_providers import GeminiProvider, LLMProviderFactory, ProviderType
+        from backend.core.llm_providers import GeminiProvider
 
         orig_init = lm.LLMManager._initialize_provider
 
@@ -102,7 +111,7 @@ def _aprimorar_llm_manager() -> None:
                         self.current_provider = GeminiProvider(api_key=api_key, model_name=model_name)
                         return
                     except Exception:
-                        pass
+                        logger.debug("excecao ignorada", exc_info=True)
             return orig_init(self)
 
         lm.LLMManager._initialize_provider = _novo_init
@@ -172,7 +181,7 @@ def _aprimorar_publicador() -> None:
                     try:
                         api_ext._registrar_publicacao(pid, clip, job, variant, video, result, account)
                     except Exception:
-                        pass
+                        logger.debug("excecao ignorada", exc_info=True)
                     if status == 'completed':
                         published += 1
                         api_ext._pub_log(f'[{idx}/{total}] publicado com sucesso ✔')
@@ -187,7 +196,7 @@ def _aprimorar_publicador() -> None:
                             for b in idb.glob('*.indexeddb.blob'):
                                 shutil.rmtree(b, ignore_errors=True)
                     except Exception:
-                        pass
+                        logger.debug("excecao ignorada", exc_info=True)
                 except Exception as exc:
                     failed += 1
                     api_ext._pub_log(f'[{idx}/{total}] falhou: {exc}')
@@ -201,7 +210,7 @@ def _aprimorar_publicador() -> None:
                     try:
                         api_ext.ext_render_pending({'project_id': pid})
                     except Exception:
-                        pass
+                        logger.debug("excecao ignorada", exc_info=True)
 
                 end = time.time() + wait_s
                 while time.time() < end:
@@ -274,7 +283,7 @@ def _aprimorar_hashtags_projeto() -> None:
                     if isinstance(tags, list):
                         return [str(t).strip().lstrip('#') for t in tags if str(t).strip()][:15]
             except Exception:
-                pass
+                logger.debug("excecao ignorada", exc_info=True)
             return []
 
         api_ext.ler_hashtags_projeto = _safe_ler_hashtags_projeto
@@ -305,13 +314,19 @@ def preparar_ambiente() -> int:
         if sys.stderr and hasattr(sys.stderr, 'reconfigure'):
             sys.stderr.reconfigure(encoding='utf-8', errors='replace')
     except Exception:
-        pass
+        logger.debug("excecao ignorada", exc_info=True)
 
     _resolver_ffmpeg()
 
-    for caminho in (str(HERE), str(STUDIO_APP), str(STUDIO_RUNTIME), str(STUDIO_ROOT)):
-        if caminho not in sys.path:
-            sys.path.insert(0, caminho)
+    # O repositório tem prioridade sobre a pasta externa do Studio. Antes, o
+    # insert(0) sucessivo colocava STUDIO_ROOT na frente de HERE no sys.path,
+    # então `import backend` resolvia para a cópia de tikclip-studio — o código
+    # deste repositório (inclusive as correções) nunca era executado.
+    if str(HERE) not in sys.path:
+        sys.path.insert(0, str(HERE))
+    for caminho in (str(STUDIO_APP), str(STUDIO_RUNTIME), str(STUDIO_ROOT)):
+        if caminho not in sys.path and Path(caminho).is_dir():
+            sys.path.append(caminho)
 
     _aprimorar_llm_manager()
     _aprimorar_publicador()
@@ -328,7 +343,7 @@ def montar_app(porta: int):
         ip_local = socket.gethostbyname(socket.gethostname())
         log_guard.LOCAL_HOSTNAMES.add(ip_local)
     except Exception:
-        pass
+        logger.debug("excecao ignorada", exc_info=True)
 
     from fastapi.responses import RedirectResponse
     from fastapi.staticfiles import StaticFiles
@@ -354,7 +369,12 @@ def montar_app(porta: int):
 
     app.mount('/ui', StaticFiles(directory=str(WEB_DIR), html=True), name='ui')
 
-    tiktok_downloads_dir = Path(r'C:\Users\Uilian\.gemini\antigravity\scratch\tiktok-downloader-web\downloads')
+    # Mesma resolução usada pelo video_translator: env > pasta legada > dados.
+    _legado_downloads = Path.home() / '.gemini' / 'antigravity' / 'scratch' / 'tiktok-downloader-web' / 'downloads'
+    tiktok_downloads_dir = Path(
+        os.environ.get('TIKCLIP_DOWNLOADS_DIR')
+        or (_legado_downloads if _legado_downloads.is_dir() else DATA_DIR / 'tiktok-downloads')
+    )
     if tiktok_downloads_dir.is_dir():
         app.mount('/media/tiktok-downloads', StaticFiles(directory=str(tiktok_downloads_dir)), name='tiktok_downloads')
 
@@ -375,11 +395,14 @@ def aguardar_servidor(porta: int, limite_s: float = 45.0) -> bool:
 
 
 def main() -> int:
+    # Precisa vir antes de qualquer log: sem isso, mensagem com acento ou
+    # caractere chinês estoura UnicodeEncodeError no console cp1252 do Windows.
+    _proteger_logging_utf8()
     _sem_janelas_de_console()
     try:
         sys.stdout.reconfigure(encoding='utf-8', errors='replace')
     except Exception:
-        pass
+        logger.debug("excecao ignorada", exc_info=True)
 
     porta = preparar_ambiente()
     url = f'http://localhost:{porta}/ui/'

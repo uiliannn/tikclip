@@ -40,6 +40,7 @@ DEFAULT_SUPO_SETTINGS: dict[str, Any] = {
     'active_provider': 'deepseek',
     'gemini_model': 'gemini-3.5-flash',
     'deepseek_model': 'deepseek-chat',
+    'nvidia_model': 'nvidia/nemotron-3.5-super-vl-120b-a12b',
     'subtitle': {
         'font_family': 'Tiktoksans Regular',
         'font_size': 24,
@@ -131,12 +132,25 @@ def _ensure_dual_connections() -> tuple[Any, dict[str, Any], dict[str, Any]]:
         }
         conexoes.append(deepseek_conn)
 
+    nvidia_conn = next((c for c in conexoes if c.get('id') == 'nvidia-analise'), None)
+    if not nvidia_conn:
+        nvidia_conn = {
+            'id': 'nvidia-analise',
+            'name': 'NVIDIA NIM',
+            'provider': 'compatible',
+            'base_url': 'https://integrate.api.nvidia.com/v1',
+            'api_key': '',
+            'image_api': 'auto',
+            'image_base_url': '',
+        }
+        conexoes.append(nvidia_conn)
+
     dados['connections'] = conexoes
-    return ams, dados, {'gemini': gemini_conn, 'deepseek': deepseek_conn}
+    return ams, dados, {'gemini': gemini_conn, 'deepseek': deepseek_conn, 'nvidia': nvidia_conn}
 
 
 # --------------------------------------------------------------------------- #
-# Rotas de IA Dual (Google Gemini <-> DeepSeek)
+# Rotas de IA Multi-Provedor (Google Gemini <-> DeepSeek <-> NVIDIA)
 # --------------------------------------------------------------------------- #
 GEMINI_MODELS = [
     {'id': 'gemini-3.5-flash', 'label': 'Gemini 3.5 Flash (Recomendado · Rápido e Preciso)'},
@@ -150,42 +164,61 @@ DEEPSEEK_MODELS = [
     {'id': 'deepseek-reasoner', 'label': 'DeepSeek R1 Reasoner (Raciocínio Profundo)'},
 ]
 
+NVIDIA_MODELS = [
+    {'id': 'nvidia/nemotron-3.5-super-vl-120b-a12b', 'label': 'Nemotron 3.5 Super VL 120B (Multimodal · Recomendado)'},
+    {'id': 'nvidia/llama-3.1-nemotron-ultra-253b-v1', 'label': 'Llama 3.1 Nemotron Ultra 253B (Alta Capacidade)'},
+    {'id': 'nvidia/nemotron-4-340b-instruct', 'label': 'Nemotron-4 340B Instruct'},
+]
+
 
 @router.get('/ai')
 def get_dual_ai_config() -> dict[str, Any]:
-    """Retorna o estado completo do seletor Gemini vs DeepSeek."""
+    """Retorna o estado completo do seletor Gemini vs DeepSeek vs NVIDIA."""
     ams, dados, conns = _ensure_dual_connections()
     supo = load_supo_settings()
 
     gem = conns['gemini']
     ds = conns['deepseek']
+    nv = conns['nvidia']
 
     analise = dados.get('analysis') or {}
     conn_ativa_id = analise.get('connection_id')
     modelo_ativo = analise.get('model') or ''
 
+    gemini_model = supo.get('gemini_model') or 'gemini-3.5-flash'
+    deepseek_model = supo.get('deepseek_model') or 'deepseek-chat'
+    nvidia_model = supo.get('nvidia_model') or 'nvidia/nemotron-3.5-super-vl-120b-a12b'
+
     if conn_ativa_id == gem.get('id'):
         active_provider = 'gemini'
-        gemini_model = modelo_ativo or supo.get('gemini_model') or 'gemini-3.5-flash'
-        deepseek_model = supo.get('deepseek_model') or 'deepseek-chat'
+        if modelo_ativo:
+            gemini_model = modelo_ativo
     elif conn_ativa_id == ds.get('id'):
         active_provider = 'deepseek'
-        deepseek_model = modelo_ativo or supo.get('deepseek_model') or 'deepseek-chat'
-        gemini_model = supo.get('gemini_model') or 'gemini-3.5-flash'
+        if modelo_ativo:
+            deepseek_model = modelo_ativo
+    elif conn_ativa_id == nv.get('id'):
+        active_provider = 'nvidia'
+        if modelo_ativo:
+            nvidia_model = modelo_ativo
     else:
         active_provider = supo.get('active_provider') or 'deepseek'
-        gemini_model = supo.get('gemini_model') or 'gemini-3.5-flash'
-        deepseek_model = supo.get('deepseek_model') or 'deepseek-chat'
 
     gem_key = (gem.get('api_key') or '').strip()
     ds_key = (ds.get('api_key') or '').strip()
+    nv_key = (nv.get('api_key') or '').strip()
 
     transcricao = dados.get('transcription') or {}
+    active_model_map = {
+        'gemini': gemini_model,
+        'deepseek': deepseek_model,
+        'nvidia': nvidia_model,
+    }
 
     return {
         'ok': True,
         'active_provider': active_provider,
-        'active_model': gemini_model if active_provider == 'gemini' else deepseek_model,
+        'active_model': active_model_map.get(active_provider, deepseek_model),
         'analysis_mode': dados.get('analysis_mode') or 'auto',
         'whisper_model': transcricao.get('model') or 'large-v3-turbo',
         'max_clips': dados.get('max_clips_per_collection') or 5,
@@ -205,17 +238,26 @@ def get_dual_ai_config() -> dict[str, Any]:
             'model': deepseek_model,
             'models': DEEPSEEK_MODELS,
         },
+        'nvidia': {
+            'connection_id': nv.get('id'),
+            'has_key': bool(nv_key),
+            'masked_key': _mask_key(nv_key),
+            'base_url': nv.get('base_url') or 'https://integrate.api.nvidia.com/v1',
+            'model': nvidia_model,
+            'models': NVIDIA_MODELS,
+        },
     }
 
 
 @router.post('/ai')
 def save_dual_ai_config(body: dict[str, Any]) -> dict[str, Any]:
-    """Salva as chaves do Gemini e/ou DeepSeek e define qual provedor está ativo."""
+    """Salva as chaves do Gemini, DeepSeek e/ou NVIDIA e define qual provedor está ativo."""
     ams, dados, conns = _ensure_dual_connections()
     supo = load_supo_settings()
 
     gem = conns['gemini']
     ds = conns['deepseek']
+    nv = conns['nvidia']
 
     # Atualiza chaves se fornecidas (não sobrescreve se vier vazio)
     if 'gemini_api_key' in body:
@@ -233,16 +275,28 @@ def save_dual_ai_config(body: dict[str, Any]) -> dict[str, Any]:
         if nova_url:
             ds['base_url'] = nova_url
 
+    if 'nvidia_api_key' in body:
+        nova_nv = str(body.get('nvidia_api_key') or '').strip()
+        if nova_nv:
+            nv['api_key'] = nova_nv
+
+    if 'nvidia_base_url' in body:
+        nova_nv_url = str(body.get('nvidia_base_url') or '').strip()
+        if nova_nv_url:
+            nv['base_url'] = nova_nv_url
+
     gemini_model = str(body.get('gemini_model') or supo.get('gemini_model') or 'gemini-3.5-flash').strip()
     deepseek_model = str(body.get('deepseek_model') or supo.get('deepseek_model') or 'deepseek-chat').strip()
+    nvidia_model = str(body.get('nvidia_model') or supo.get('nvidia_model') or 'nvidia/nemotron-3.5-super-vl-120b-a12b').strip()
 
     active_provider = str(body.get('active_provider') or supo.get('active_provider') or 'deepseek').strip().lower()
-    if active_provider not in ('gemini', 'deepseek'):
+    if active_provider not in ('gemini', 'deepseek', 'nvidia'):
         active_provider = 'deepseek'
 
     supo['active_provider'] = active_provider
     supo['gemini_model'] = gemini_model
     supo['deepseek_model'] = deepseek_model
+    supo['nvidia_model'] = nvidia_model
     save_supo_settings(supo)
 
     # Atualiza o vínculo ativo no motor do TikClip
@@ -250,6 +304,12 @@ def save_dual_ai_config(body: dict[str, Any]) -> dict[str, Any]:
         dados['analysis'] = {
             'connection_id': gem['id'],
             'model': gemini_model,
+            'capability': 'auto',
+        }
+    elif active_provider == 'nvidia':
+        dados['analysis'] = {
+            'connection_id': nv['id'],
+            'model': nvidia_model,
             'capability': 'auto',
         }
     else:
@@ -283,10 +343,10 @@ def save_dual_ai_config(body: dict[str, Any]) -> dict[str, Any]:
 
 @router.post('/ai/switch')
 def switch_ai_provider(body: dict[str, Any]) -> dict[str, Any]:
-    """Troca rapidamente entre 'gemini' e 'deepseek' com 1 clique."""
+    """Troca rapidamente entre 'gemini', 'deepseek' e 'nvidia' com 1 clique."""
     provider = str(body.get('provider') or '').strip().lower()
-    if provider not in ('gemini', 'deepseek'):
-        raise HTTPException(status_code=400, detail="Provedor inválido. Use 'gemini' ou 'deepseek'.")
+    if provider not in ('gemini', 'deepseek', 'nvidia'):
+        raise HTTPException(status_code=400, detail="Provedor inválido. Use 'gemini', 'deepseek' ou 'nvidia'.")
     return save_dual_ai_config({'active_provider': provider})
 
 
@@ -366,12 +426,17 @@ def test_ai_provider(body: dict[str, Any] | None = None) -> dict[str, Any]:
                 }
 
     else:
-        ds = conns['deepseek']
-        api_key = str(payload.get('api_key') or ds.get('api_key') or '').strip()
-        base_url = str(payload.get('base_url') or ds.get('base_url') or 'https://api.deepseek.com').strip().rstrip('/')
-        model = str(payload.get('model') or supo.get('deepseek_model') or 'deepseek-chat').strip()
+        is_nvidia = provider == 'nvidia'
+        conn = conns['nvidia'] if is_nvidia else conns['deepseek']
+        default_url = 'https://integrate.api.nvidia.com/v1' if is_nvidia else 'https://api.deepseek.com'
+        default_model = 'nvidia/nemotron-3.5-super-vl-120b-a12b' if is_nvidia else 'deepseek-chat'
+        label = 'NVIDIA NIM' if is_nvidia else 'DeepSeek'
+
+        api_key = str(payload.get('api_key') or conn.get('api_key') or '').strip()
+        base_url = str(payload.get('base_url') or conn.get('base_url') or default_url).strip().rstrip('/')
+        model = str(payload.get('model') or supo.get(f'{provider}_model') or default_model).strip()
         if not api_key:
-            return {'ok': False, 'provider': 'deepseek', 'modelo': model, 'detalhe': 'Informe a chave da API do DeepSeek.'}
+            return {'ok': False, 'provider': provider, 'modelo': model, 'detalhe': f'Informe a chave da API da {label}.'}
 
         url = f'{base_url}/chat/completions'
         try:
@@ -379,11 +444,11 @@ def test_ai_provider(body: dict[str, Any] | None = None) -> dict[str, Any]:
                 url,
                 json={
                     'model': model,
-                    'max_tokens': 12,
+                    'max_tokens': 16,
                     'messages': [{'role': 'user', 'content': 'Responda apenas: CONECTADO'}],
                 },
                 headers={'Authorization': f'Bearer {api_key}'},
-                timeout=20,
+                timeout=30,
             )
             ms = int((time.time() - inicio) * 1000)
             if r.ok:
@@ -391,21 +456,21 @@ def test_ai_provider(body: dict[str, Any] | None = None) -> dict[str, Any]:
                 txt = ((choices[0] if choices else {}).get('message') or {}).get('content') or 'CONECTADO'
                 return {
                     'ok': True,
-                    'provider': 'deepseek',
+                    'provider': provider,
                     'modelo': model,
                     'latencia_ms': ms,
                     'resposta': txt.strip()[:120],
                 }
             return {
                 'ok': False,
-                'provider': 'deepseek',
+                'provider': provider,
                 'modelo': model,
                 'detalhe': f'Status {r.status_code}: {r.text[:160]}',
             }
         except Exception as exc:
             return {
                 'ok': False,
-                'provider': 'deepseek',
+                'provider': provider,
                 'modelo': model,
                 'detalhe': f'Erro de conexão: {str(exc)[:180]}',
             }

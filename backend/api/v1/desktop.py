@@ -2,12 +2,11 @@
 桌面专用API端点
 提供桌面应用需要的特殊功能
 """
-import os
 import psutil
 import platform
 from datetime import datetime
-from typing import Dict, Any, List
-from fastapi import APIRouter, HTTPException, Depends
+from typing import Dict, Any
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from backend.core.desktop_config import get_desktop_config, is_desktop_mode
@@ -170,7 +169,6 @@ async def detailed_health_check():
         # 检查数据库连接
         db_status = "healthy"
         try:
-            from backend.core.database import get_db
             # 简单的数据库连接测试
             db_status = "healthy"
         except Exception:

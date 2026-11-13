@@ -34,7 +34,17 @@ DATA_DIR = Path(os.environ.get("APPDATA", str(Path.home()))) / "TikClip"
 DUBLADOS_DIR = DATA_DIR / "dublados"
 DUBLADOS_DIR.mkdir(parents=True, exist_ok=True)
 
-TIKTOK_DOWNLOADS_DIR = Path(r"C:\Users\Uilian\.gemini\antigravity\scratch\tiktok-downloader-web\downloads")
+# Pasta de downloads do TikTok usada pela galeria. Antes era um caminho
+# absoluto da máquina do autor, que quebrava em qualquer outro computador.
+# Ordem de resolução: TIKCLIP_DOWNLOADS_DIR > pasta legada (se existir) >
+# <dados do usuário>/tiktok-downloads.
+_LEGACY_DOWNLOADS_DIR = (
+    Path.home() / ".gemini" / "antigravity" / "scratch" / "tiktok-downloader-web" / "downloads"
+)
+TIKTOK_DOWNLOADS_DIR = Path(
+    os.getenv("TIKCLIP_DOWNLOADS_DIR")
+    or (_LEGACY_DOWNLOADS_DIR if _LEGACY_DOWNLOADS_DIR.is_dir() else DATA_DIR / "tiktok-downloads")
+)
 
 VOICESTUDIO_URL = os.getenv("TIKCLIP_VOZ", "http://127.0.0.1:3900/v1/audio/speech")
 
@@ -215,14 +225,104 @@ def _generate_audio_segment(text: str, output_path: Path, voice_id: str) -> Path
 
     # Edge-TTS (Garantido e 100% gratuito)
     import edge_tts
+
+    timing = _subtitle_timing()
     actual_voice = voice_id if voice_id.startswith("pt-BR") else "pt-BR-AntonioNeural"
+    boundaries: list[dict[str, Any]] = []
 
     async def _run():
         tts = edge_tts.Communicate(text, actual_voice)
-        await tts.save(str(output_path))
+        # stream() em vez de save(): save() descarta os eventos WordBoundary,
+        # que são justamente os tempos reais de cada palavra falada.
+        with open(output_path, "wb") as audio:
+            async for chunk in tts.stream():
+                if chunk["type"] == "audio":
+                    audio.write(chunk["data"])
+                elif chunk["type"] == "WordBoundary":
+                    boundaries.append(chunk)
 
     asyncio.run(_run())
+
+    # Sidecar best-effort: se falhar, o pipeline cai no fallback sem quebrar.
+    if timing is not None:
+        timing.write_words_sidecar(
+            output_path, timing.words_from_boundaries(boundaries, text)
+        )
+
     return output_path
+
+
+def _subtitle_timing():
+    """Importa o módulo de alinhamento de legendas sem acoplar o servidor.
+
+    Retorna ``None`` quando indisponível: o pipeline segue com o
+    comportamento antigo em vez de derrubar a dublagem inteira.
+    """
+    for nome in ("backend.services.subtitle_timing", "subtitle_timing"):
+        try:
+            return __import__(nome, fromlist=["*"])
+        except ImportError:
+            continue
+    return None
+
+
+def _build_srt(segments: list[dict[str, Any]], uppercase: bool = False, max_chars: int = 42) -> str:
+    """Monta o SRT priorizando os tempos reais da fala dublada.
+
+    Ordem de preferência, por trecho:
+      1. sidecar ``.words.json`` do edge-tts -> cues por palavra, ancorados no
+         início do trecho e limitados ao início do próximo;
+      2. tempos do Whisper no vídeo original (comportamento anterior).
+    """
+    timing = _subtitle_timing()
+
+    if timing is None:
+        # Fallback sem dependência: SRT simples com os tempos do transcritor.
+        def _fmt(t: float) -> str:
+            h = int(t // 3600)
+            m = int((t % 3600) // 60)
+            s = int(t % 60)
+            ms = int((t - int(t)) * 1000)
+            return f"{h:02d}:{m:02d}:{s:02d},{ms:03d}"
+
+        blocos = []
+        for item in segments:
+            texto = str(item.get("trans") or "")
+            if uppercase:
+                texto = texto.upper()
+            if not texto.strip():
+                continue
+            blocos.append(
+                f"{len(blocos) + 1}\n{_fmt(item['start'])} --> {_fmt(item['end'])}\n{texto}\n"
+            )
+        return "\n".join(blocos)
+
+    cues = []
+    total = len(segments)
+    for idx, item in enumerate(segments):
+        proximo_inicio = segments[idx + 1]["start"] if idx + 1 < total else None
+        audio = item.get("audio_file")
+        palavras = timing.read_words_sidecar(audio) if audio else []
+
+        if palavras:
+            cues.extend(
+                timing.cues_from_words_anchored(
+                    palavras,
+                    item["start"],
+                    max_chars=max_chars,
+                    clamp_to=proximo_inicio,
+                )
+            )
+        else:
+            inicio = float(item["start"])
+            fim = float(item["end"])
+            if fim <= inicio:
+                fim = inicio + timing.MIN_CUE_DURATION
+            cues.append(
+                timing.Cue(start=inicio, end=fim, text=str(item.get("trans") or ""))
+            )
+
+    return timing.build_srt(cues, uppercase=uppercase)
 
 
 def _build_subtitle_filter(
@@ -297,7 +397,7 @@ def dub_and_translate_video(
             try:
                 progress_callback(pct, msg)
             except Exception:
-                pass
+                logger.debug("excecao ignorada", exc_info=True)
 
     _update_job(running=True, job_id=job_id, percent=5, step="starting", message="Iniciando processo de dublagem...")
 
@@ -362,9 +462,9 @@ def dub_and_translate_video(
             cmd_mix += ["-i", str(v_path)]
             orig_idx = total_segs
             filters.append(f"[{orig_idx}:a]volume={ducking_volume:.2f}[orig_low]")
-            filters.append(f"[orig_low][dub_voice]amix=inputs=2:duration=first:normalize=0[final_audio]")
+            filters.append("[orig_low][dub_voice]amix=inputs=2:duration=first:normalize=0[final_audio]")
         else:
-            filters.append(f"[dub_voice]anull[final_audio]")
+            filters.append("[dub_voice]anull[final_audio]")
 
         dubbed_audio = work_dir / "audio_final.wav"
         cmd_mix += [
@@ -379,17 +479,12 @@ def dub_and_translate_video(
             raise RuntimeError(f"Erro na mixagem de áudio: {res_mix.stderr[-300:]}")
 
         # 5. Geração de arquivo de legendas .srt
+        # Alinhado à fala dublada quando o edge-tts devolveu WordBoundary.
         srt_file = work_dir / "legendas.srt"
-        with open(srt_file, "w", encoding="utf-8") as f:
-            for item in translated_segments:
-                def _fmt(t):
-                    h = int(t // 3600)
-                    m = int((t % 3600) // 60)
-                    s = int(t % 60)
-                    ms = int((t - int(t)) * 1000)
-                    return f"{h:02d}:{m:02d}:{s:02d},{ms:03d}"
-                text_sub = item["trans"].upper() if subtitle_uppercase else item["trans"]
-                f.write(f"{item['id']+1}\n{_fmt(item['start'])} --> {_fmt(item['end'])}\n{text_sub}\n\n")
+        srt_file.write_text(
+            _build_srt(translated_segments, uppercase=subtitle_uppercase),
+            encoding="utf-8",
+        )
 
         # 6. Renderização do vídeo final
         msg_sub = "com voz dublada e legendas customizadas..." if burn_subtitles else "com voz dublada (sem legendas)..."
@@ -440,7 +535,7 @@ def dub_and_translate_video(
         title_pt = custom_title or (translated_segments[0]["trans"] if translated_segments else v_path.stem)
         info_lines = [
             "=" * 50,
-            f"VÍDEO DUBLADO EM PORTUGUÊS",
+            "VÍDEO DUBLADO EM PORTUGUÊS",
             f"VOZ: {voice_id}",
             f"VÍDEO ORIGINAL: {v_path.name}",
             "=" * 50,
@@ -509,7 +604,7 @@ def list_dubbed_videos() -> list[dict[str, Any]]:
                 if len(spl) > 1:
                     desc = spl[1].split("--- HASHTAGS")[0].strip()
             except Exception:
-                pass
+                logger.debug("excecao ignorada", exc_info=True)
 
         cover = None
         for ext in (".jpg", ".jpeg", ".png"):

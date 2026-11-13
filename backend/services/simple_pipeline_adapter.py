@@ -4,7 +4,7 @@
 
 import logging
 import os
-from typing import Dict, Any, Optional, Callable
+from typing import Dict, Any
 from pathlib import Path
 
 from backend.services.simple_progress import emit_progress, clear_progress

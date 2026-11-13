@@ -4,6 +4,9 @@
 """
 
 import logging
+
+logger = logging.getLogger(__name__)
+
 import os
 import sqlite3
 from contextlib import contextmanager
@@ -107,7 +110,7 @@ def session_scope() -> Generator[Session, None, None]:
         try:
             db.rollback()
         except Exception:
-            pass
+            logger.debug("excecao ignorada", exc_info=True)
         raise
     finally:
         db.close()
@@ -136,6 +139,7 @@ def reset_database():
     create_tables()
 
 from sqlalchemy import text
+
 
 def test_connection() -> bool:
     """测试数据库连接"""

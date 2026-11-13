@@ -28,6 +28,7 @@ const state = {
     max_clips: 5,
     gemini: { has_key: false, masked_key: '', model: 'gemini-3.5-flash', models: [] },
     deepseek: { has_key: false, masked_key: '', model: 'deepseek-chat', base_url: 'https://api.deepseek.com', models: [] },
+    nvidia: { has_key: false, masked_key: '', model: 'nvidia/nemotron-3.5-super-vl-120b-a12b', base_url: 'https://integrate.api.nvidia.com/v1', models: [] },
   },
   supoSettings: {
     language: 'pt-BR',
@@ -152,15 +153,26 @@ function aplicarTema(tema) {
   if (label) label.textContent = tema === 'dark' ? 'Modo claro' : 'Modo escuro';
 }
 
+function getAiProviderLabel(prov) {
+  if (prov === 'gemini') return 'Google Gemini';
+  if (prov === 'nvidia') return 'NVIDIA Nemotron';
+  return 'DeepSeek';
+}
+
 function atualizarSidebarStatus() {
   const aiLabel = document.getElementById('sidebar-ai-label');
   if (aiLabel) {
-    const isGem = state.ai && state.ai.active_provider === 'gemini';
-    const gemModel = (state.ai && state.ai.gemini && state.ai.gemini.model) || '2.5-flash';
+    const prov = (state.ai && state.ai.active_provider) || 'deepseek';
+    const gemModel = (state.ai && state.ai.gemini && state.ai.gemini.model) || '3.5-flash';
     const dsModel = (state.ai && state.ai.deepseek && state.ai.deepseek.model) || 'chat';
-    aiLabel.textContent = isGem
-      ? `IA: Google Gemini (${gemModel})`
-      : `IA: DeepSeek (${dsModel})`;
+    const nvModel = ((state.ai && state.ai.nvidia && state.ai.nvidia.model) || 'nemotron-3.5-super-vl-120b-a12b').split('/').pop();
+    if (prov === 'gemini') {
+      aiLabel.textContent = `IA: Google Gemini (${gemModel})`;
+    } else if (prov === 'nvidia') {
+      aiLabel.textContent = `IA: NVIDIA (${nvModel})`;
+    } else {
+      aiLabel.textContent = `IA: DeepSeek (${dsModel})`;
+    }
   }
   const ttLabel = document.getElementById('sidebar-tt-label');
   const accCount = document.getElementById('nav-acc-count');
@@ -363,14 +375,21 @@ function renderCriar(container) {
     h('option', { value: 'square', text: '📐 Quadrado 1:1' }),
   );
 
-  // Chip rápido para alternar IA (Gemini vs DeepSeek) direto na Home!
-  const isGem = state.ai.active_provider === 'gemini';
+  // Chip rápido para alternar IA (Gemini -> DeepSeek -> NVIDIA) direto na Home!
+  const _aiChipMeta = (p) => {
+    if (p === 'gemini') return { cls: '', text: '✨ IA: Gemini' };
+    if (p === 'nvidia') return { cls: 'is-nvidia', text: '🟢 IA: NVIDIA' };
+    return { cls: 'is-deepseek', text: '🧠 IA: DeepSeek' };
+  };
+  const initMeta = _aiChipMeta(state.ai.active_provider);
   const btnAiQuick = h('button', {
     type: 'button',
-    class: `sc-chip sc-chip-ai ${isGem ? '' : 'is-deepseek'}`,
-    title: 'Clique para alternar entre Google Gemini e DeepSeek',
+    class: `sc-chip sc-chip-ai ${initMeta.cls}`,
+    title: 'Clique para alternar entre Google Gemini, DeepSeek e NVIDIA Nemotron',
     onclick: async () => {
-      const novo = state.ai.active_provider === 'gemini' ? 'deepseek' : 'gemini';
+      const ordem = ['gemini', 'deepseek', 'nvidia'];
+      const idx = ordem.indexOf(state.ai.active_provider);
+      const novo = ordem[(idx + 1) % ordem.length];
       try {
         const res = await apiSupo('/ai/switch', {
           method: 'POST',
@@ -378,15 +397,15 @@ function renderCriar(container) {
         });
         state.ai = res;
         atualizarSidebarStatus();
-        const g = state.ai.active_provider === 'gemini';
-        btnAiQuick.className = `sc-chip sc-chip-ai ${g ? '' : 'is-deepseek'}`;
-        btnAiQuick.textContent = g ? '✨ IA: Gemini' : '🧠 IA: DeepSeek';
-        toast(`IA alterada para ${g ? 'Google Gemini' : 'DeepSeek'}!`);
+        const m = _aiChipMeta(state.ai.active_provider);
+        btnAiQuick.className = `sc-chip sc-chip-ai ${m.cls}`;
+        btnAiQuick.textContent = m.text;
+        toast(`IA alterada para ${getAiProviderLabel(state.ai.active_provider)}!`);
       } catch (err) {
         toast('Erro ao alternar IA: ' + err.message);
       }
     },
-  }, isGem ? '✨ IA: Gemini' : '🧠 IA: DeepSeek');
+  }, initMeta.text);
 
   const btnLimpeza = h('button', {
     type: 'button',
@@ -612,7 +631,7 @@ async function renderProjeto(container, pid) {
   const headerSub = h('div', { class: 'sc-proj-sub' },
     h('span', null, '▶ YouTube / Local ↗'),
     h('span', null, `🕒 ${tempoRelativo(projMeta.updated_at)}`),
-    h('span', null, `🤖 IA ativa: ${state.ai.active_provider === 'gemini' ? 'Google Gemini' : 'DeepSeek'}`),
+    h('span', null, `🤖 IA ativa: ${getAiProviderLabel(state.ai.active_provider)}`),
   );
 
   const btnMaisCortes = h('button', {
@@ -4249,7 +4268,7 @@ function renderEstudio(container) {
   wrap.append(
     h('div', { class: 'sc-page-head' },
       h('h1', { class: 'sc-page-title', text: 'Estúdio IA — Ferramentas Criativas' }),
-      h('p', { class: 'sc-page-desc', text: `Gere vídeos inéditos por assunto usando ${state.ai.active_provider === 'gemini' ? 'Google Gemini' : 'DeepSeek'}, duble vídeos ou monte telas divididas.` }),
+      h('p', { class: 'sc-page-desc', text: `Gere vídeos inéditos por assunto usando ${getAiProviderLabel(state.ai.active_provider)}, duble vídeos ou monte telas divididas.` }),
     ),
     tabBar,
     body,
@@ -4285,7 +4304,7 @@ function renderEstudio(container) {
               toast('Erro: ' + e.message);
             }
           },
-        }, `✨ Gerar com ${state.ai.active_provider === 'gemini' ? 'Google Gemini' : 'DeepSeek'}`),
+        }, `✨ Gerar com ${getAiProviderLabel(state.ai.active_provider)}`),
         statusText,
       ),
       galeria,
@@ -4501,9 +4520,10 @@ async function renderConfiguracoes(container) {
   );
 
   /* ------------------------------------------------------------------------
-     CARD 1: MOTOR DE IA — CHAVE SELETORA GOOGLE GEMINI vs DEEPSEEK
+     CARD 1: MOTOR DE IA — CHAVE SELETORA GEMINI vs DEEPSEEK vs NVIDIA
      ------------------------------------------------------------------------ */
   let provSelecionado = state.ai.active_provider || 'deepseek';
+  const nvState = state.ai.nvidia || { has_key: false, masked_key: '', model: 'nvidia/nemotron-3.5-super-vl-120b-a12b', models: [] };
 
   const inpGemKey = h('input', {
     class: 'sc-input',
@@ -4537,6 +4557,22 @@ async function renderConfiguracoes(container) {
     ]).map((m) => h('option', { value: m.id, selected: m.id === state.ai.deepseek.model, text: m.label })),
   );
 
+  const inpNvKey = h('input', {
+    class: 'sc-input',
+    type: 'password',
+    placeholder: nvState.has_key
+      ? `Chave salva (${nvState.masked_key}) — digite para substituir`
+      : 'Cole sua chave da API da NVIDIA NIM (nvapi-...)',
+  });
+
+  const selNvModel = h('select', { class: 'sc-select' },
+    ...(nvState.models && nvState.models.length ? nvState.models : [
+      { id: 'nvidia/nemotron-3.5-super-vl-120b-a12b', label: 'Nemotron 3.5 Super VL 120B (Multimodal · Recomendado)' },
+      { id: 'nvidia/llama-3.1-nemotron-ultra-253b-v1', label: 'Llama 3.1 Nemotron Ultra 253B (Alta Capacidade)' },
+      { id: 'nvidia/nemotron-4-340b-instruct', label: 'Nemotron-4 340B Instruct' },
+    ]).map((m) => h('option', { value: m.id, selected: m.id === nvState.model, text: m.label })),
+  );
+
   const testResultMsg = h('div', { style: 'margin-top:12px; font-size:13px; font-weight:600;' });
 
   const optGemini = h('button', {
@@ -4551,11 +4587,21 @@ async function renderConfiguracoes(container) {
     onclick: () => selecionarProvedorUI('deepseek'),
   });
 
+  const optNvidia = h('button', {
+    type: 'button',
+    class: `sc-ai-option ${provSelecionado === 'nvidia' ? 'is-selected' : ''}`,
+    onclick: () => selecionarProvedorUI('nvidia'),
+  });
+
   const boxGemini = h('div', { class: 'sc-ai-provider-box' });
   const boxDeepseek = h('div', { class: 'sc-ai-provider-box' });
+  const boxNvidia = h('div', { class: 'sc-ai-provider-box' });
 
   function atualizarCardsSwitch() {
     const isGem = provSelecionado === 'gemini';
+    const isDs = provSelecionado === 'deepseek';
+    const isNv = provSelecionado === 'nvidia';
+
     optGemini.className = `sc-ai-option ${isGem ? 'is-selected' : ''}`;
     optGemini.replaceChildren(
       h('div', { class: 'sc-ai-option-top' },
@@ -4565,17 +4611,27 @@ async function renderConfiguracoes(container) {
       h('span', { style: 'font-size:12px; color:var(--text-secondary)', text: 'Rápido, multimodal e excelente para cortes virais em português.' }),
     );
 
-    optDeepseek.className = `sc-ai-option ${!isGem ? 'is-selected' : ''}`;
+    optDeepseek.className = `sc-ai-option ${isDs ? 'is-selected' : ''}`;
     optDeepseek.replaceChildren(
       h('div', { class: 'sc-ai-option-top' },
         h('span', { class: 'sc-ai-name', text: '🧠 DeepSeek API' }),
-        !isGem ? h('span', { class: 'sc-ai-pill-active', text: 'EM USO' }) : null,
+        isDs ? h('span', { class: 'sc-ai-pill-active', text: 'EM USO' }) : null,
       ),
       h('span', { style: 'font-size:12px; color:var(--text-secondary)', text: 'Alta precisão na análise de transcrições e geração de roteiros.' }),
     );
 
+    optNvidia.className = `sc-ai-option ${isNv ? 'is-selected' : ''}`;
+    optNvidia.replaceChildren(
+      h('div', { class: 'sc-ai-option-top' },
+        h('span', { class: 'sc-ai-name', text: '🟢 NVIDIA NIM (Nemotron)' }),
+        isNv ? h('span', { class: 'sc-ai-pill-active', text: 'EM USO' }) : null,
+      ),
+      h('span', { style: 'font-size:12px; color:var(--text-secondary)', text: 'Nemotron 3.5 Super VL 120B multimodal hospedado na NVIDIA.' }),
+    );
+
     boxGemini.className = `sc-ai-provider-box ${isGem ? 'is-active-box' : ''}`;
-    boxDeepseek.className = `sc-ai-provider-box ${!isGem ? 'is-active-box' : ''}`;
+    boxDeepseek.className = `sc-ai-provider-box ${isDs ? 'is-active-box' : ''}`;
+    boxNvidia.className = `sc-ai-provider-box ${isNv ? 'is-active-box' : ''}`;
   }
 
   async function selecionarProvedorUI(novo) {
@@ -4588,7 +4644,7 @@ async function renderConfiguracoes(container) {
       });
       state.ai = res;
       atualizarSidebarStatus();
-      toast(`API ativa alterada para ${novo === 'gemini' ? 'Google Gemini' : 'DeepSeek'}!`);
+      toast(`API ativa alterada para ${getAiProviderLabel(novo)}!`);
     } catch (e) {
       toast('Erro ao trocar provedor: ' + e.message);
     }
@@ -4660,17 +4716,50 @@ async function renderConfiguracoes(container) {
     }, '⚡ Testar API do DeepSeek'),
   );
 
+  boxNvidia.append(
+    h('div', { style: 'display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;' },
+      h('strong', { text: 'Credenciais da NVIDIA NIM (build.nvidia.com)' }),
+      h('span', { style: 'font-size:12px; color:var(--text-muted)', text: nvState.has_key ? `Salva: ${nvState.masked_key}` : 'Nenhuma chave salva' }),
+    ),
+    h('div', { class: 'sc-field' }, h('label', { class: 'sc-label', text: 'Chave da API NVIDIA (NVIDIA_API_KEY)' }), inpNvKey),
+    h('div', { class: 'sc-field' }, h('label', { class: 'sc-label', text: 'Modelo NVIDIA Nemotron' }), selNvModel),
+    h('button', {
+      type: 'button',
+      class: 'sc-btn sc-btn-sm',
+      onclick: async () => {
+        testResultMsg.style.color = 'var(--text-secondary)';
+        testResultMsg.textContent = '⏳ Testando conexão com NVIDIA NIM...';
+        const r = await apiSupo('/ai/test', {
+          method: 'POST',
+          body: JSON.stringify({
+            provider: 'nvidia',
+            api_key: inpNvKey.value.trim() || undefined,
+            model: selNvModel.value,
+          }),
+        });
+        if (r.ok) {
+          testResultMsg.style.color = 'var(--ok-color)';
+          testResultMsg.textContent = `✅ NVIDIA respondeu em ${r.latencia_ms}ms (${r.modelo}): "${r.resposta}"`;
+        } else {
+          testResultMsg.style.color = 'var(--err-color)';
+          testResultMsg.textContent = `❌ Falha na NVIDIA: ${r.detalhe}`;
+        }
+      },
+    }, '⚡ Testar API da NVIDIA'),
+  );
+
   const cardAi = h('div', { class: 'sc-card' },
     h('div', { class: 'sc-card-head' },
       h('div', { class: 'sc-card-icon' }, '🤖'),
       h('div', null,
-        h('div', { class: 'sc-card-title', text: 'Motor de Inteligência Artificial (Chave Seletora Gemini / DeepSeek)' }),
+        h('div', { class: 'sc-card-title', text: 'Motor de Inteligência Artificial (Gemini / DeepSeek / NVIDIA)' }),
         h('div', { class: 'sc-card-sub', text: 'Selecione abaixo qual API você quer usar para a geração de cortes e roteiros.' }),
       ),
     ),
-    h('div', { class: 'sc-ai-switch-grid' }, optGemini, optDeepseek),
+    h('div', { class: 'sc-ai-switch-grid' }, optGemini, optDeepseek, optNvidia),
     boxGemini,
     boxDeepseek,
+    boxNvidia,
     h('div', { style: 'display:flex; align-items:center; justify-content:space-between; margin-top:16px;' },
       testResultMsg,
       h('button', {
@@ -4685,6 +4774,8 @@ async function renderConfiguracoes(container) {
                 gemini_model: selGemModel.value,
                 deepseek_api_key: inpDsKey.value.trim(),
                 deepseek_model: selDsModel.value,
+                nvidia_api_key: inpNvKey.value.trim(),
+                nvidia_model: selNvModel.value,
               }),
             });
             state.ai = novoEstado;

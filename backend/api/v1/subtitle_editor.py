@@ -1,13 +1,12 @@
 import logging
-from pathlib import Path
 from typing import List, Dict, Optional
-from fastapi import APIRouter, HTTPException, Depends, UploadFile, File
+from fastapi import APIRouter, HTTPException, Depends
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from ...utils.subtitle_processor import SubtitleProcessor
 from ...utils.video_editor import VideoEditor
-from ...core.path_utils import get_data_directory, get_projects_directory
+from ...core.path_utils import get_projects_directory
 from ...core.database import get_db
 from ...services.project_service import ProjectService
 from sqlalchemy.orm import Session

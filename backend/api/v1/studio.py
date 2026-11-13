@@ -1,4 +1,8 @@
 """Unified creative workspace. Legacy projects are adapted, never overwritten."""
+
+import logging
+
+logger = logging.getLogger(__name__)
 import json
 import uuid
 from pathlib import Path
@@ -6,7 +10,6 @@ from typing import Optional, Literal
 from urllib.parse import urlparse
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, Query
 from fastapi.responses import FileResponse, Response
-from starlette.background import BackgroundTask
 from sqlalchemy.orm import Session
 from backend.core.database import get_db
 from backend.core.sentry_setup import capture_studio_exception
@@ -65,6 +68,7 @@ def platform_strategies():
 
 
 from backend.services.studio import vision_settings, analysis_preferences
+
 
 @router.get('/analysis-preferences')
 def get_analysis_preferences():
@@ -191,7 +195,7 @@ def workspace(project_id: str, db: Session = Depends(get_db)):
                 if not title.startswith('[PUBLICADO'):
                     v['post']['title'] = f"[PUBLICADO] {title}"
     except Exception:
-        pass
+        logger.debug("excecao ignorada", exc_info=True)
     return {**data, 'material_origin': 'sample' if (project.processing_config or {}).get('example') else 'user', 'example_version': (project.processing_config or {}).get('example_version'), 'jobs': [{k: v for k, v in j.items() if k not in ('instance', 'snapshot')} for j in data['jobs']]}
 
 @router.get('/{project_id}/source-preview')
@@ -435,7 +439,11 @@ def output_variant_kit(project_id: str, variant_id: str, db: Session = Depends(g
     )
 
 
-@router.api_route('/{project_id}/output-variants/kits', methods=['GET', 'POST'])
+# Duas rotas explícitas em vez de api_route(methods=['GET','POST']): com
+# api_route o FastAPI gerava o mesmo operation_id para GET e POST, o que
+# quebra geradores de client e gera aviso no /docs.
+@router.get('/{project_id}/output-variants/kits', operation_id='output_variant_kits_all_get')
+@router.post('/{project_id}/output-variants/kits', operation_id='output_variant_kits_all_post')
 def output_variant_kits_all(project_id: str, db: Session = Depends(get_db)):
     """Exporta todos os cortes prontos do projeto numa só pasta Downloads\\TikClip\\<data e hora>\\."""
     from backend.services.studio import publish_kit

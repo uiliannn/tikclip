@@ -2,12 +2,10 @@
 任务进度更新服务
 提供实时进度更新功能
 """
+from backend.utils.time_utils import utcnow
 
-import asyncio
 import logging
 from typing import Dict, Any, Optional
-from datetime import datetime
-from sqlalchemy.orm import Session
 from ..core.database import SessionLocal
 from ..models.task import Task, TaskStatus
 from ..core.websocket_manager import manager as websocket_manager
@@ -37,7 +35,7 @@ class ProgressUpdateService:
                     task.progress = progress
                     if current_step:
                         task.current_step = current_step
-                    task.updated_at = datetime.utcnow()
+                    task.updated_at = utcnow()
                     db.commit()
                     
                     # 记录到活动任务中
@@ -45,7 +43,7 @@ class ProgressUpdateService:
                         'progress': progress,
                         'current_step': current_step,
                         'step_details': step_details,
-                        'updated_at': datetime.utcnow()
+                        'updated_at': utcnow()
                     }
                     
                     logger.info(f"任务 {task_id} 进度更新: {progress}% - {current_step}")
@@ -90,7 +88,7 @@ class ProgressUpdateService:
                 if task:
                     # 标记任务为运行中
                     task.status = TaskStatus.RUNNING
-                    task.started_at = datetime.utcnow()
+                    task.started_at = utcnow()
                     db.commit()
                     
                     # 添加到活动任务列表
@@ -98,8 +96,8 @@ class ProgressUpdateService:
                         'progress': 0.0,
                         'current_step': '初始化',
                         'step_details': '开始处理任务',
-                        'started_at': datetime.utcnow(),
-                        'updated_at': datetime.utcnow()
+                        'started_at': utcnow(),
+                        'updated_at': utcnow()
                     }
                     
                     logger.info(f"开始监控任务进度: {task_id}")
@@ -128,8 +126,8 @@ class ProgressUpdateService:
                         task.progress = 100.0
                         task.current_step = '完成'
                     
-                    task.completed_at = datetime.utcnow()
-                    task.updated_at = datetime.utcnow()
+                    task.completed_at = utcnow()
+                    task.updated_at = utcnow()
                     db.commit()
                     
                     # 从活动任务列表中移除

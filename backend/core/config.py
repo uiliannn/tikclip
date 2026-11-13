@@ -3,7 +3,6 @@
 集中管理应用的所有配置项
 """
 
-import os
 from pathlib import Path
 from typing import Optional, Dict, Any
 from pydantic import BaseModel, Field, AliasChoices

@@ -3,10 +3,8 @@
 提供FastAPI的依赖注入服务
 """
 
-from typing import Generator
 from sqlalchemy.orm import Session
 
-from ..core.database import get_db
 from ..services.project_service import ProjectService
 from ..services.clip_service import ClipService
 from ..services.collection_service import CollectionService

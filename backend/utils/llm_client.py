@@ -3,10 +3,8 @@
 """
 import json
 import logging
-import os
 import re
-from typing import Dict, Any, List
-from collections.abc import Generator
+from typing import Dict, Any
 
 # 修复导入问题
 try:
@@ -249,7 +247,7 @@ class LLMClient:
                 json_str = sanitize_string(json_match.group())
                 try:
                     return json.loads(json_str)
-                except json.JSONDecodeError as e:
+                except json.JSONDecodeError:
                     # 4. 最后尝试修复常见错误
                     try:
                         fixed_json = fix_common_json_errors(json_str)

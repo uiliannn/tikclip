@@ -1,17 +1,12 @@
 """
 通知任务
 """
+from backend.utils.time_utils import utcnow
 
-import os
 import logging
-from pathlib import Path
 from typing import Dict, Any, Optional
 from celery import shared_task
-from ..core.celery_app import celery_app
-from datetime import datetime
 from ..core.database import SessionLocal
-from ..models.task import Task, TaskStatus
-from ..services.websocket_notification_service import WebSocketNotificationService
 
 logger = logging.getLogger(__name__)
 
@@ -46,7 +41,7 @@ def send_processing_notification(self, project_id: str, task_id: str, message: s
                 'task_id': task_id,
                 'message': message,
                 'type': notification_type,
-                'timestamp': datetime.utcnow().isoformat()
+                'timestamp': utcnow().isoformat()
             }
             
             logger.info(f"通知已发送: {notification_data}")
@@ -103,7 +98,7 @@ def send_error_notification(self, project_id: str, task_id: str, error_message: 
                 'type': 'error',
                 'message': error_message,
                 'details': error_details,
-                'timestamp': datetime.utcnow().isoformat()
+                'timestamp': utcnow().isoformat()
             }
             
             logger.error(f"错误通知已发送: {notification_data}")
@@ -159,7 +154,7 @@ def send_completion_notification(self, project_id: str, task_id: str, result: Di
                 'type': 'success',
                 'message': '处理完成',
                 'result': result,
-                'timestamp': datetime.utcnow().isoformat()
+                'timestamp': utcnow().isoformat()
             }
             
             logger.info(f"完成通知已发送: {notification_data}")

@@ -3,7 +3,6 @@
 为所有合集生成封面缩略图
 """
 import sys
-import os
 from pathlib import Path
 
 # 添加项目根目录到Python路径

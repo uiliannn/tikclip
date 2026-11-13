@@ -1,16 +1,14 @@
 import asyncio
-import json
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime
 from enum import Enum
 from typing import Dict, List, Optional, Any
 from uuid import uuid4
 
 from sqlalchemy.orm import Session
-from celery import Celery
 
 from ..core.database import session_scope
-from ..models.bilibili import BilibiliAccount, BilibiliUploadRecord
+from ..models.bilibili import BilibiliUploadRecord
 from ..services.bilibili_service import BilibiliAccountService, BilibiliUploadService
 from ..core.celery_app import celery_app
 

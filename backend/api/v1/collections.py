@@ -9,7 +9,6 @@ from sqlalchemy.orm import Session
 from ...core.database import get_db
 from ...services.collection_service import CollectionService
 from ...schemas.collection import CollectionCreate, CollectionUpdate, CollectionResponse, CollectionListResponse
-from ...schemas.base import PaginationParams
 
 logger = logging.getLogger(__name__)
 

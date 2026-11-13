@@ -9,7 +9,6 @@ from __future__ import annotations
 import json
 import re
 import uuid
-from pathlib import Path
 
 NOME_ARQUIVO = 'step3_all_scored.json'
 TOLERANCIA = 1.5  # segundos de sobreposição aceitos ao comparar com o que já existe

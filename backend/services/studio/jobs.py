@@ -292,7 +292,6 @@ def _conferir_video_existe(url: str) -> None:
     ident = _id_do_youtube(url)
     if not ident:
         return
-    import json
     import urllib.error
     import urllib.request
 
