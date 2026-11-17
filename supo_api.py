@@ -1561,3 +1561,84 @@ def supo_translator_start(payload: dict[str, Any]) -> dict[str, Any]:
     t.start()
 
     return {'ok': True, 'message': 'Processo de dublagem e tradução iniciado em segundo plano.'}
+
+
+# --------------------------------------------------------------------------
+# Live Clipping (PeakCut): YouTube / Twitch / Kick -> Buffer -> Cortes >60s
+# --------------------------------------------------------------------------
+
+@router.get('/live/sessions')
+def live_list_sessions() -> dict[str, Any]:
+    import live_clipper
+    sessions = live_clipper.live_manager.list_sessions()
+    active_count = sum(1 for s in sessions if s.get('status') == 'recording')
+    return {'ok': True, 'active_count': active_count, 'sessions': sessions}
+
+
+@router.post('/live/start')
+def live_start_session(payload: dict[str, Any]) -> dict[str, Any]:
+    import live_clipper
+    url = str(payload.get('url') or '').strip()
+    if not url:
+        raise HTTPException(status_code=422, detail='Informe a URL da live (YouTube, Twitch ou Kick).')
+
+    clip_mode = str(payload.get('clip_mode') or 'peak')
+    clip_duration = int(payload.get('clip_duration') or 85)
+    interval_sec = int(payload.get('interval_sec') or 180)
+    send_to_pipeline = bool(payload.get('send_to_pipeline', True))
+    server_port = int(os.environ.get('TIKCLIP_WEB_PORT') or 8585)
+
+    try:
+        sess = live_clipper.live_manager.start_session(
+            url=url,
+            clip_mode=clip_mode,
+            clip_duration=clip_duration,
+            interval_sec=interval_sec,
+            send_to_pipeline=send_to_pipeline,
+            server_port=server_port,
+        )
+    except live_clipper.LiveResolveError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f'Erro ao iniciar live: {exc}') from exc
+
+    return {'ok': True, 'session': sess}
+
+
+@router.post('/live/{session_id}/stop')
+def live_stop_session(session_id: str) -> dict[str, Any]:
+    import live_clipper
+    try:
+        sess = live_clipper.live_manager.stop_session(session_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return {'ok': True, 'session': sess}
+
+
+@router.post('/live/{session_id}/clip-now')
+def live_clip_now(session_id: str, payload: dict[str, Any] | None = None) -> dict[str, Any]:
+    import live_clipper
+    body = payload or {}
+    seconds = int(body.get('seconds') or 85)
+    try:
+        clip = live_clipper.live_manager.clip_now(session_id, seconds=seconds)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return {'ok': True, 'clip': clip}
+
+
+@router.get('/live/{session_id}/clips/{filename}')
+def live_download_clip(session_id: str, filename: str):
+    from fastapi.responses import FileResponse
+    import live_clipper
+
+    sess = live_clipper.live_manager.get_session(session_id)
+    if not sess:
+        raise HTTPException(status_code=404, detail='Sessão não encontrada.')
+    safe_name = Path(filename).name
+    target = sess.clips_dir / safe_name
+    if not target.is_file():
+        raise HTTPException(status_code=404, detail='Clipe não encontrado.')
+    return FileResponse(path=str(target), filename=safe_name, media_type='video/mp4')

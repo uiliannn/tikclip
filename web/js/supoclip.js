@@ -254,6 +254,7 @@ function navegar(novaView, pid = null) {
   else if (novaView === 'publicador') renderPublicador(main);
   else if (novaView === 'youtube_publisher') renderYouTubePublisher(main);
   else if (novaView === 'canais') renderCanais(main);
+  else if (novaView === 'live') renderLive(main);
   else if (novaView === 'tiktok_downloads') renderTikTokDownloads(main);
   else if (novaView === 'estudio') renderEstudio(main);
   else if (novaView === 'agentes') renderAgentes(main);
@@ -5837,4 +5838,270 @@ function mostrarResultadoDublagem(container, res, originalVideo) {
       }, '🚀 Publicar no TikTok')
     )
   );
+}
+
+/* ==========================================================================
+   VIEW 11: LIVE CLIPPING (PEAKCUT - YOUTUBE / TWITCH / KICK)
+   ========================================================================== */
+let _livePollTimer = null;
+
+function _fmtSec(sec) {
+  const s = Math.max(0, Math.floor(sec || 0));
+  const hh = Math.floor(s / 3600);
+  const mm = Math.floor((s % 3600) / 60);
+  const ss = s % 60;
+  const pad = (n) => String(n).padStart(2, '0');
+  return hh > 0 ? `${pad(hh)}:${pad(mm)}:${pad(ss)}` : `${pad(mm)}:${pad(ss)}`;
+}
+
+async function renderLive(container) {
+  if (_livePollTimer) {
+    clearInterval(_livePollTimer);
+    _livePollTimer = null;
+  }
+  container.replaceChildren();
+
+  const head = h('div', { class: 'sc-view-head' },
+    h('div', null,
+      h('h1', { class: 'sc-view-title', style: 'display:flex; align-items:center; gap:8px;' },
+        '🔴 Live Clipping',
+        h('span', { class: 'sc-pill-status', style: 'font-size:12px; background:rgba(239,68,68,0.15); color:#f87171;' }, 'YouTube • Twitch • Kick')
+      ),
+      h('p', { class: 'sc-view-desc' },
+        'Grava lives em buffer circular, detecta picos de áudio em tempo real e gera cortes > 60s automaticamente para o TikTok.'
+      )
+    ),
+    h('div', { class: 'sc-view-actions' },
+      h('button', { class: 'sc-btn', onclick: () => renderLive(container) }, '🔄 Atualizar')
+    )
+  );
+  container.append(head);
+
+  // Card de Iniciar Nova Live
+  const inpUrl = h('input', {
+    type: 'text',
+    class: 'sc-input',
+    placeholder: 'https://www.youtube.com/@canal/live  ou  https://www.twitch.tv/canal  ou  https://kick.com/canal',
+    style: 'flex:1;',
+  });
+
+  const selMode = h('select', { class: 'sc-select' },
+    h('option', { value: 'peak', selected: true, text: '🔊 Automático por Pico de Áudio (Hype)' }),
+    h('option', { value: 'interval', text: '⏱️ Automático a cada 3 minutos' }),
+    h('option', { value: 'manual', text: '✋ Apenas Manual (botão Cortar Agora)' }),
+  );
+
+  const selDur = h('select', { class: 'sc-select' },
+    h('option', { value: '75', text: '75 segundos (>1 min)' }),
+    h('option', { value: '85', selected: true, text: '85 segundos (recomendado)' }),
+    h('option', { value: '110', text: '110 segundos' }),
+    h('option', { value: '140', text: '140 segundos' }),
+  );
+
+  const chkPipeline = h('input', { type: 'checkbox', checked: true, id: 'live-send-pipeline' });
+
+  const btnStart = h('button', {
+    class: 'sc-btn sc-btn-primary',
+    style: 'background:#ef4444; border-color:#ef4444; font-weight:700;',
+    onclick: async () => {
+      const url = inpUrl.value.trim();
+      if (!url) return toast('Cole a URL da live primeiro.');
+      btnStart.disabled = true;
+      btnStart.textContent = '⏳ Conectando na live...';
+      try {
+        await apiSupo('/live/start', {
+          method: 'POST',
+          body: JSON.stringify({
+            url,
+            clip_mode: selMode.value,
+            clip_duration: Number(selDur.value) || 85,
+            send_to_pipeline: chkPipeline.checked,
+          }),
+        });
+        inpUrl.value = '';
+        toast('Gravação ao vivo iniciada!');
+        await _loadLiveSessions();
+      } catch (e) {
+        toast('Erro: ' + e.message);
+      } finally {
+        btnStart.disabled = false;
+        btnStart.textContent = '🔴 Iniciar Gravação ao Vivo';
+      }
+    },
+  }, '🔴 Iniciar Gravação ao Vivo');
+
+  const startCard = h('div', { class: 'sc-card', style: 'margin-bottom:18px;' },
+    h('div', { class: 'sc-card-title', text: 'Conectar a uma Transmissão ao Vivo' }),
+    h('div', { style: 'display:flex; gap:10px; margin-top:10px; flex-wrap:wrap;' }, inpUrl, btnStart),
+    h('div', { style: 'display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:12px; margin-top:12px; align-items:end;' },
+      h('div', null,
+        h('label', { class: 'sc-label', text: 'Modo de Captura' }),
+        selMode
+      ),
+      h('div', null,
+        h('label', { class: 'sc-label', text: 'Duração do Corte (> 60s)' }),
+        selDur
+      ),
+      h('label', { style: 'display:flex; align-items:center; gap:8px; cursor:pointer; font-size:13px; padding:8px 0;' },
+        chkPipeline,
+        h('span', { text: 'Enviar automaticamente ao Pipeline TikClip (IA + Legendas + 9:16)' })
+      )
+    )
+  );
+  container.append(startCard);
+
+  const sessionsWrap = h('div', { style: 'display:flex; flex-direction:column; gap:16px;' });
+  container.append(sessionsWrap);
+
+  async function _loadLiveSessions() {
+    if (state.view !== 'live') {
+      if (_livePollTimer) { clearInterval(_livePollTimer); _livePollTimer = null; }
+      return;
+    }
+    try {
+      const data = await apiSupo('/live/sessions');
+      const badge = document.getElementById('nav-live-count');
+      if (badge) {
+        badge.textContent = String(data.active_count || 0);
+        badge.style.display = (data.active_count || 0) > 0 ? '' : 'none';
+      }
+      _renderLiveSessions(data.sessions || []);
+    } catch (e) {
+      // ignora falha transitória de polling
+    }
+  }
+
+  function _renderLiveSessions(sessions) {
+    sessionsWrap.replaceChildren();
+    if (!sessions.length) {
+      sessionsWrap.append(
+        h('div', { class: 'sc-card', style: 'text-align:center; padding:32px; color:var(--text-muted);' },
+          'Nenhuma gravação ao vivo ativa nesta sessão. Cole o link de uma live acima para começar!'
+        )
+      );
+      return;
+    }
+
+    sessions.forEach((s) => {
+      const isRec = s.status === 'recording';
+      const statusBadge = isRec
+        ? h('span', { class: 'sc-pill-status', style: 'background:rgba(239,68,68,0.18); color:#f87171; font-weight:700;' }, '🔴 GRAVANDO')
+        : s.status === 'error'
+          ? h('span', { class: 'sc-pill-status', style: 'background:rgba(239,68,68,0.15); color:#fca5a5;' }, '❌ ERRO')
+          : h('span', { class: 'sc-pill-status', style: 'background:rgba(148,163,184,0.15); color:#94a3b8;' }, '⏹️ ENCERRADA');
+
+      // Gráfico simples de barras de loudness (últimos 60s)
+      const hist = (s.db_history && s.db_history.length) ? s.db_history : [-60];
+      const bars = hist.map((db) => {
+        const pct = Math.max(6, Math.min(100, Math.round(((db + 60) / 60) * 100)));
+        const hot = (db - (s.baseline_db || -45)) >= 7.0 && db >= -26;
+        return h('div', {
+          title: `${db} dB`,
+          style: `flex:1; min-width:3px; height:${pct}%; background:${hot ? '#ef4444' : '#3b82f6'}; border-radius:2px 2px 0 0; opacity:${hot ? 1 : 0.75};`,
+        });
+      });
+
+      const meterBox = h('div', { style: 'margin-top:12px; background:rgba(0,0,0,0.22); border:1px solid var(--border); border-radius:8px; padding:10px;' },
+        h('div', { style: 'display:flex; justify-content:space-between; font-size:12px; color:var(--text-muted); margin-bottom:6px;' },
+          h('span', { text: `🎙️ Volume ao vivo: ${s.current_db} dB (média base: ${s.baseline_db} dB)` }),
+          h('span', { text: s.pending_peak ? '🔥 Pico detectado! Finalizando janela do corte...' : `Buffer: ${_fmtSec(s.buffer_sec)} • Tempo: ${_fmtSec(s.elapsed_sec)}` })
+        ),
+        h('div', { style: 'display:flex; align-items:flex-end; gap:2px; height:44px;' }, ...bars)
+      );
+
+      const actions = h('div', { style: 'display:flex; gap:8px; flex-wrap:wrap; margin-top:12px;' });
+      if (isRec || s.buffer_sec >= 65) {
+        actions.append(
+          h('button', {
+            class: 'sc-btn sc-btn-primary sc-btn-sm',
+            onclick: async () => {
+              try {
+                toast('Gerando corte dos últimos 75s...');
+                await apiSupo(`/live/${s.id}/clip-now`, { method: 'POST', body: JSON.stringify({ seconds: 75 }) });
+                toast('Corte de ~75s gerado!');
+                await _loadLiveSessions();
+              } catch (e) { toast('Erro: ' + e.message); }
+            },
+          }, '✂️ Cortar Últimos 75s'),
+          h('button', {
+            class: 'sc-btn sc-btn-sm',
+            onclick: async () => {
+              try {
+                toast('Gerando corte dos últimos 95s...');
+                await apiSupo(`/live/${s.id}/clip-now`, { method: 'POST', body: JSON.stringify({ seconds: 95 }) });
+                toast('Corte de ~95s gerado!');
+                await _loadLiveSessions();
+              } catch (e) { toast('Erro: ' + e.message); }
+            },
+          }, '✂️ Cortar Últimos 95s')
+        );
+      }
+      if (isRec) {
+        actions.append(
+          h('button', {
+            class: 'sc-btn sc-btn-sm',
+            style: 'color:#f87171; border-color:rgba(239,68,68,0.4);',
+            onclick: async () => {
+              await apiSupo(`/live/${s.id}/stop`, { method: 'POST' });
+              toast('Gravação encerrada.');
+              await _loadLiveSessions();
+            },
+          }, '⏹️ Parar Gravação')
+        );
+      }
+
+      const clipsList = h('div', { style: 'margin-top:14px; display:flex; flex-direction:column; gap:8px;' });
+      if (s.clips && s.clips.length) {
+        clipsList.append(h('div', { style: 'font-size:12px; font-weight:700; color:var(--text-muted);' }, `Cortes capturados (${s.clips.length}):`));
+        s.clips.forEach((c) => {
+          const row = h('div', { style: 'display:flex; align-items:center; justify-content:space-between; gap:10px; padding:8px 10px; background:rgba(255,255,255,0.03); border:1px solid var(--border); border-radius:8px; font-size:13px;' },
+            h('div', null,
+              h('strong', { text: `#${c.seq} • ${c.duration_sec}s ` }),
+              h('span', { style: 'color:var(--text-muted);', text: `(${c.trigger} às ${c.created_at} • ${c.size_mb} MB)` }),
+              ' ',
+              h('span', { class: 'sc-pill-status', style: 'font-size:11px;' }, c.pipeline_status === 'enviado' ? '🤖 No Pipeline' : c.pipeline_status)
+            ),
+            h('div', { style: 'display:flex; gap:6px;' },
+              c.project_id ? h('button', {
+                class: 'sc-btn sc-btn-sm sc-btn-primary',
+                onclick: () => {
+                  state.currentProjectId = c.project_id;
+                  navegarPara('projeto');
+                },
+              }, '🎬 Abrir Projeto') : null,
+              h('a', {
+                class: 'sc-btn sc-btn-sm',
+                href: c.download_url,
+                download: c.filename,
+                text: '⬇️ MP4',
+              })
+            )
+          );
+          clipsList.append(row);
+        });
+      }
+
+      sessionsWrap.append(
+        h('div', { class: 'sc-card' },
+          h('div', { style: 'display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap;' },
+            h('div', null,
+              h('div', { style: 'display:flex; align-items:center; gap:8px; flex-wrap:wrap;' },
+                statusBadge,
+                h('span', { class: 'sc-pill-status', text: s.platform }),
+                h('strong', { style: 'font-size:15px;', text: s.title })
+              ),
+              h('div', { style: 'font-size:12px; color:var(--text-muted); margin-top:4px;', text: `${s.uploader} • Modo: ${s.clip_mode} • Corte padrão: ${s.clip_duration}s` })
+            )
+          ),
+          s.error ? h('div', { style: 'margin-top:8px; color:#f87171; font-size:12px;', text: s.error }) : null,
+          meterBox,
+          actions,
+          clipsList
+        )
+      );
+    });
+  }
+
+  await _loadLiveSessions();
+  _livePollTimer = setInterval(_loadLiveSessions, 2000);
 }
