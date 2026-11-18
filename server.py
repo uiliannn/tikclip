@@ -351,6 +351,20 @@ def _aprimorar_duracao_minima() -> None:
         print(f'[tikclip-web] Aviso ao aplicar duracao minima >60s: {exc}')
 
 
+def _aprimorar_acesso_rede() -> None:
+    """Permite acesso ao TikClip via IP da rede local, Tailscale e proxy reverso (CasaOS/Caddy)."""
+    try:
+        from backend.core import local_origin_guard as loguard
+        loguard.LOCAL_HOSTNAMES.update({
+            '192.168.1.188',
+            '100.71.68.8',
+            'tikclip.uilian.cloud',
+            'casa.uilian.cloud',
+        })
+    except Exception as exc:
+        print(f'[tikclip-web] Aviso ao configurar acesso em rede: {exc}')
+
+
 def preparar_ambiente() -> int:
     os.environ['TIKCLIP_DATA_DIR'] = str(DATA_DIR)
     os.environ['TIKCLIP_APP_DIR'] = str(DATA_DIR)
@@ -378,12 +392,17 @@ def preparar_ambiente() -> int:
     _aprimorar_pydantic_cenas()
     _aprimorar_hashtags_projeto()
     _aprimorar_duracao_minima()
+    _aprimorar_acesso_rede()
     porta_env = os.getenv('TIKCLIP_WEB_PORT')
     return int(porta_env) if porta_env else escolher_porta(8585)
 
 
 def montar_app(porta: int):
-    os.environ['TIKCLIP_ALLOWED_ORIGINS'] = f'http://localhost:{porta},http://127.0.0.1:{porta}'
+    os.environ['TIKCLIP_ALLOWED_ORIGINS'] = (
+        f'http://localhost:{porta},http://127.0.0.1:{porta},'
+        f'http://192.168.1.188:{porta},http://100.71.68.8:{porta},'
+        'https://tikclip.uilian.cloud,http://tikclip.uilian.cloud'
+    )
     try:
         from backend.core import local_origin_guard as log_guard
         ip_local = socket.gethostbyname(socket.gethostname())
