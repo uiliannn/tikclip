@@ -5900,6 +5900,23 @@ async function renderLive(container) {
 
   const chkPipeline = h('input', { type: 'checkbox', checked: true, id: 'live-send-pipeline' });
 
+  // Carrega contas TikTok e canais YouTube disponíveis para auto-post ou envio direto
+  let ytAccounts = [];
+  try {
+    const ytRes = await apiSupo('/youtube-publisher/accounts');
+    ytAccounts = ytRes.accounts || [];
+  } catch (e) { /* ignora se não houver contas */ }
+  const ttAccounts = state.accounts || [];
+
+  const selTikTok = h('select', { class: 'sc-select' },
+    h('option', { value: '', text: 'Não auto-postar no TikTok' }),
+    ...ttAccounts.map((a) => h('option', { value: a.id, text: `🎵 ${a.name || a.id}${a.connected ? '' : ' (desconectada)'}` }))
+  );
+  const selYouTube = h('select', { class: 'sc-select' },
+    h('option', { value: '', text: 'Não auto-postar no YouTube' }),
+    ...ytAccounts.map((a) => h('option', { value: a.id, text: `▶️ ${a.name || a.id}${a.connected ? '' : ' (desconectada)'}` }))
+  );
+
   const btnStart = h('button', {
     class: 'sc-btn sc-btn-primary',
     style: 'background:#ef4444; border-color:#ef4444; font-weight:700;',
@@ -5916,6 +5933,8 @@ async function renderLive(container) {
             clip_mode: selMode.value,
             clip_duration: Number(selDur.value) || 85,
             send_to_pipeline: chkPipeline.checked,
+            tiktok_account: selTikTok.value || null,
+            youtube_account: selYouTube.value || null,
           }),
         });
         inpUrl.value = '';
@@ -5942,7 +5961,15 @@ async function renderLive(container) {
         h('label', { class: 'sc-label', text: 'Duração do Corte (> 60s)' }),
         selDur
       ),
-      h('label', { style: 'display:flex; align-items:center; gap:8px; cursor:pointer; font-size:13px; padding:8px 0;' },
+      h('div', null,
+        h('label', { class: 'sc-label', text: 'Auto-post TikTok (Opcional)' }),
+        selTikTok
+      ),
+      h('div', null,
+        h('label', { class: 'sc-label', text: 'Auto-post YouTube Shorts (Opcional)' }),
+        selYouTube
+      ),
+      h('label', { style: 'display:flex; align-items:center; gap:8px; cursor:pointer; font-size:13px; padding:8px 0; grid-column: 1 / -1;' },
         chkPipeline,
         h('span', { text: 'Enviar automaticamente ao Pipeline TikClip (IA + Legendas + 9:16)' })
       )
@@ -6053,15 +6080,56 @@ async function renderLive(container) {
       const clipsList = h('div', { style: 'margin-top:14px; display:flex; flex-direction:column; gap:8px;' });
       if (s.clips && s.clips.length) {
         clipsList.append(h('div', { style: 'font-size:12px; font-weight:700; color:var(--text-muted);' }, `Cortes capturados (${s.clips.length}):`));
+        const fmtPubBadge = (label, st) => {
+          if (!st) return null;
+          if (st === 'publicado') return h('span', { class: 'sc-pill-status', style: 'font-size:11px; background:rgba(16,185,129,0.18); color:#34d399;' }, `✅ ${label}`);
+          if (st === 'aguardando_pipeline' || st === 'publicando') return h('span', { class: 'sc-pill-status', style: 'font-size:11px; background:rgba(245,158,11,0.18); color:#fbbf24;' }, `⏳ ${label}: ${st === 'aguardando_pipeline' ? 'aguardando IA' : 'enviando...'}`);
+          return h('span', { class: 'sc-pill-status', style: 'font-size:11px; background:rgba(239,68,68,0.18); color:#f87171;' }, `❌ ${label}: ${st}`);
+        };
+
         s.clips.forEach((c) => {
-          const row = h('div', { style: 'display:flex; align-items:center; justify-content:space-between; gap:10px; padding:8px 10px; background:rgba(255,255,255,0.03); border:1px solid var(--border); border-radius:8px; font-size:13px;' },
-            h('div', null,
-              h('strong', { text: `#${c.seq} • ${c.duration_sec}s ` }),
+          const defaultTtAcc = s.tiktok_account || selTikTok.value || state.activeAccount || ((ttAccounts[0] || {}).id) || 'default';
+          const defaultYtAcc = s.youtube_account || selYouTube.value || ((ytAccounts[0] || {}).id) || 'default';
+
+          const row = h('div', { style: 'display:flex; align-items:center; justify-content:space-between; gap:10px; padding:8px 10px; background:rgba(255,255,255,0.03); border:1px solid var(--border); border-radius:8px; font-size:13px; flex-wrap:wrap;' },
+            h('div', { style: 'display:flex; align-items:center; gap:6px; flex-wrap:wrap;' },
+              h('strong', { text: `#${c.seq} • ${c.duration_sec}s` }),
               h('span', { style: 'color:var(--text-muted);', text: `(${c.trigger} às ${c.created_at} • ${c.size_mb} MB)` }),
-              ' ',
-              h('span', { class: 'sc-pill-status', style: 'font-size:11px;' }, c.pipeline_status === 'enviado' ? '🤖 No Pipeline' : c.pipeline_status)
+              h('span', { class: 'sc-pill-status', style: 'font-size:11px;' }, c.pipeline_status === 'enviado' ? '🤖 No Pipeline' : c.pipeline_status),
+              fmtPubBadge('TikTok', c.tiktok_status),
+              fmtPubBadge('YouTube', c.youtube_status)
             ),
-            h('div', { style: 'display:flex; gap:6px;' },
+            h('div', { style: 'display:flex; gap:6px; flex-wrap:wrap;' },
+              h('button', {
+                class: 'sc-btn sc-btn-sm',
+                style: 'background:rgba(236,72,153,0.16); border-color:rgba(236,72,153,0.45); color:#f472b6;',
+                disabled: c.tiktok_status === 'publicando' || c.tiktok_status === 'aguardando_pipeline',
+                onclick: async () => {
+                  try {
+                    toast(`Enviando corte #${c.seq} para o TikTok (${defaultTtAcc})...`);
+                    await apiSupo(`/live/${s.id}/clips/${c.filename}/publish`, {
+                      method: 'POST',
+                      body: JSON.stringify({ platform: 'tiktok', account_id: defaultTtAcc }),
+                    });
+                    await _loadLiveSessions();
+                  } catch (e) { toast('Erro TikTok: ' + e.message); }
+                },
+              }, '🚀 TikTok'),
+              h('button', {
+                class: 'sc-btn sc-btn-sm',
+                style: 'background:rgba(239,68,68,0.16); border-color:rgba(239,68,68,0.45); color:#f87171;',
+                disabled: c.youtube_status === 'publicando' || c.youtube_status === 'aguardando_pipeline',
+                onclick: async () => {
+                  try {
+                    toast(`Enviando corte #${c.seq} para o YouTube Shorts (${defaultYtAcc})...`);
+                    await apiSupo(`/live/${s.id}/clips/${c.filename}/publish`, {
+                      method: 'POST',
+                      body: JSON.stringify({ platform: 'youtube', account_id: defaultYtAcc }),
+                    });
+                    await _loadLiveSessions();
+                  } catch (e) { toast('Erro YouTube: ' + e.message); }
+                },
+              }, '▶️ YouTube'),
               c.project_id ? h('button', {
                 class: 'sc-btn sc-btn-sm sc-btn-primary',
                 onclick: () => {

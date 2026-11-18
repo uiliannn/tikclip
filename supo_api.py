@@ -1586,6 +1586,8 @@ def live_start_session(payload: dict[str, Any]) -> dict[str, Any]:
     clip_duration = int(payload.get('clip_duration') or 85)
     interval_sec = int(payload.get('interval_sec') or 180)
     send_to_pipeline = bool(payload.get('send_to_pipeline', True))
+    tiktok_account = str(payload.get('tiktok_account') or '').strip() or None
+    youtube_account = str(payload.get('youtube_account') or '').strip() or None
     server_port = int(os.environ.get('TIKCLIP_WEB_PORT') or 8585)
 
     try:
@@ -1596,6 +1598,8 @@ def live_start_session(payload: dict[str, Any]) -> dict[str, Any]:
             interval_sec=interval_sec,
             send_to_pipeline=send_to_pipeline,
             server_port=server_port,
+            tiktok_account=tiktok_account,
+            youtube_account=youtube_account,
         )
     except live_clipper.LiveResolveError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
@@ -1642,3 +1646,24 @@ def live_download_clip(session_id: str, filename: str):
     if not target.is_file():
         raise HTTPException(status_code=404, detail='Clipe não encontrado.')
     return FileResponse(path=str(target), filename=safe_name, media_type='video/mp4')
+
+
+@router.post('/live/{session_id}/clips/{filename}/publish')
+def live_publish_clip(session_id: str, filename: str, payload: dict[str, Any]) -> dict[str, Any]:
+    import live_clipper
+
+    platform = str(payload.get('platform') or '').strip().lower()
+    account_id = str(payload.get('account_id') or 'default').strip() or 'default'
+    safe_name = Path(filename).name
+    try:
+        clip = live_clipper.live_manager.publish_clip(
+            sid=session_id,
+            filename=safe_name,
+            platform=platform,
+            account_id=account_id,
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return {'ok': True, 'clip': clip}

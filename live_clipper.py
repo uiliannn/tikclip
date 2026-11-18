@@ -196,6 +196,8 @@ class LiveSession:
         interval_sec: int = 180,
         send_to_pipeline: bool = True,
         server_port: int = 8585,
+        tiktok_account: str | None = None,
+        youtube_account: str | None = None,
     ):
         self.id = session_id
         self.url = info['url']
@@ -209,6 +211,8 @@ class LiveSession:
         self.interval_sec = max(90, min(600, int(interval_sec or 180)))
         self.send_to_pipeline = bool(send_to_pipeline)
         self.server_port = server_port
+        self.tiktok_account = (tiktok_account or '').strip() or None
+        self.youtube_account = (youtube_account or '').strip() or None
 
         self.dir = _data_dir() / 'live_sessions' / session_id
         self.buf_dir = self.dir / 'buffer'
@@ -460,6 +464,8 @@ class LiveSession:
             'project_id': None,
             'pipeline_status': 'pendente' if self.send_to_pipeline else 'salvo',
             'download_url': f'/api/v1/supo/live/{self.id}/clips/{out_name}',
+            'tiktok_status': None,
+            'youtube_status': None,
         }
 
         with self.lock:
@@ -492,6 +498,118 @@ class LiveSession:
                 logger.warning(f'[Live {self.id}] Falha ao enviar para pipeline: {exc}')
                 clip_info['pipeline_status'] = 'erro_envio'
 
+        if self.tiktok_account:
+            self.publish_clip_async(out_name, 'tiktok', self.tiktok_account, wait_pipeline=bool(clip_info.get('project_id')))
+        if self.youtube_account:
+            self.publish_clip_async(out_name, 'youtube', self.youtube_account, wait_pipeline=bool(clip_info.get('project_id')))
+
+        return clip_info
+
+    def _find_clip(self, filename: str) -> dict[str, Any]:
+        with self.lock:
+            for c in self.clips:
+                if c.get('filename') == filename:
+                    return c
+        raise KeyError('Corte da live não encontrado.')
+
+    def _resolve_publish_asset(self, clip_info: dict[str, Any]) -> tuple[Path, str, str, list[str]]:
+        pid = clip_info.get('project_id')
+        fallback_path = self.clips_dir / str(clip_info['filename'])
+        default_title = f"{self.uploader} - {self.title[:60]} #{clip_info.get('seq', 1)}"
+        default_tags = ['live', 'cortes', self.uploader.replace(' ', '').lower()[:20]]
+
+        if pid:
+            try:
+                import api_ext
+                p_clips = api_ext.project_clips(pid)
+                ready = next((x for x in p_clips if x.get('status') == 'pronto' and x.get('has_video')), None)
+                if ready:
+                    state = api_ext._read_studio(pid)
+                    jobs = {j['job_id']: j for j in state.get('jobs', []) if j.get('job_id')}
+                    variant = next((v for v in state.get('output_variants', []) if v.get('id') == ready.get('id')), {})
+                    job = jobs.get(variant.get('render_job_id'))
+                    vp = api_ext._video_path(pid, job)
+                    if vp and Path(vp).is_file():
+                        t = ready.get('title') or default_title
+                        desc = ready.get('description') or f"{t}\n\n#Shorts #cortes"
+                        tags = ready.get('hashtags') or default_tags
+                        return Path(vp), t, desc, list(tags)
+            except Exception:
+                pass
+
+        return fallback_path, default_title, f"{default_title}\n\n#Shorts #cortes", default_tags
+
+    def publish_clip_async(
+        self,
+        filename: str,
+        platform: str,
+        account_id: str,
+        wait_pipeline: bool = False,
+    ) -> dict[str, Any]:
+        clip_info = self._find_clip(filename)
+        status_key = 'tiktok_status' if platform == 'tiktok' else 'youtube_status'
+
+        with self.lock:
+            clip_info[status_key] = 'aguardando_pipeline' if wait_pipeline else 'publicando'
+
+        def _worker():
+            try:
+                pid = clip_info.get('project_id')
+                if wait_pipeline and pid:
+                    import api_ext
+                    deadline = time.time() + 900  # até 15 min aguardando pipeline 9:16
+                    while time.time() < deadline and not self.stop_event.is_set():
+                        try:
+                            p_clips = api_ext.project_clips(pid)
+                            if any(x.get('status') == 'pronto' and x.get('has_video') for x in p_clips):
+                                break
+                            if p_clips and all(x.get('status') == 'erro' for x in p_clips):
+                                break
+                        except Exception:
+                            pass
+                        time.sleep(5)
+
+                with self.lock:
+                    clip_info[status_key] = 'publicando'
+
+                video_path, title, desc, tags = self._resolve_publish_asset(clip_info)
+                if not video_path.is_file():
+                    raise FileNotFoundError(f'Arquivo não encontrado: {video_path}')
+
+                if platform == 'tiktok':
+                    from backend.services import tiktok_local_publisher as ttl
+                    import tiktok_library
+                    cover = tiktok_library.extract_video_cover(video_path, second=1.5)
+                    res = ttl.publish_video(
+                        video_path,
+                        title[:150],
+                        desc[:2000],
+                        tags,
+                        cover_path=cover,
+                        account=account_id or 'default',
+                    )
+                    st = (res or {}).get('status', 'publicado')
+                    with self.lock:
+                        clip_info[status_key] = 'publicado' if st in ('published', 'publicado', 'ok', 'success') else st
+                elif platform == 'youtube':
+                    import youtube_local_publisher as ytl
+                    ytl.publish_video(
+                        video_path=video_path,
+                        title=title[:100],
+                        description=desc[:4500],
+                        tags=tags,
+                        visibility='public',
+                        is_short=True,
+                        account=account_id or 'default',
+                    )
+                    with self.lock:
+                        clip_info[status_key] = 'publicado'
+            except Exception as exc:
+                logger.warning(f'[Live {self.id}] Erro ao publicar ({platform}): {exc}')
+                with self.lock:
+                    clip_info[status_key] = f'erro: {str(exc)[:80]}'
+
+        threading.Thread(target=_worker, name=f'live-pub-{platform}-{self.id}', daemon=True).start()
         return clip_info
 
     def to_dict(self) -> dict[str, Any]:
@@ -517,6 +635,8 @@ class LiveSession:
                 'pending_peak': self.pending_peak_timer is not None,
                 'clips_count': len(self.clips),
                 'clips': list(self.clips)[:30],
+                'tiktok_account': self.tiktok_account,
+                'youtube_account': self.youtube_account,
             }
 
 
@@ -533,6 +653,8 @@ class LiveManager:
         interval_sec: int = 180,
         send_to_pipeline: bool = True,
         server_port: int = 8585,
+        tiktok_account: str | None = None,
+        youtube_account: str | None = None,
     ) -> dict[str, Any]:
         info = resolve_live_stream(url)
         sid = uuid.uuid4().hex[:10]
@@ -544,6 +666,8 @@ class LiveManager:
             interval_sec=interval_sec,
             send_to_pipeline=send_to_pipeline,
             server_port=server_port,
+            tiktok_account=tiktok_account,
+            youtube_account=youtube_account,
         )
         with self._lock:
             self._sessions[sid] = sess
@@ -572,6 +696,20 @@ class LiveManager:
         if not sess:
             raise KeyError('Sessão de live não encontrada.')
         return sess.create_clip(seconds=seconds, trigger='Manual')
+
+    def publish_clip(
+        self,
+        sid: str,
+        filename: str,
+        platform: str,
+        account_id: str,
+    ) -> dict[str, Any]:
+        sess = self.get_session(sid)
+        if not sess:
+            raise KeyError('Sessão de live não encontrada.')
+        if platform not in ('tiktok', 'youtube'):
+            raise ValueError('Plataforma inválida (use tiktok ou youtube).')
+        return sess.publish_clip_async(filename=filename, platform=platform, account_id=account_id, wait_pipeline=False)
 
 
 live_manager = LiveManager()
