@@ -365,6 +365,49 @@ def _aprimorar_acesso_rede() -> None:
         print(f'[tikclip-web] Aviso ao configurar acesso em rede: {exc}')
 
 
+def _aprimorar_fit_lives() -> None:
+    """Força enquadramento apenas em modo fit (tela inteira com fundo desfocado) para projetos de Live."""
+    try:
+        from backend.services.studio import jobs, store
+        from backend.core.database import SessionLocal
+        from backend.models.project import Project
+
+        _orig_apply_framing = jobs._apply_framing
+
+        def _is_live_project(project_id: str, video) -> bool:
+            if 'live_cut_' in str(video):
+                return True
+            try:
+                st = store.read(project_id)
+                if '[LIVE]' in str(st.get('name') or ''):
+                    return True
+            except Exception:
+                pass
+            try:
+                with SessionLocal() as db:
+                    proj = db.query(Project).filter(Project.id == project_id).first()
+                    if proj and '[LIVE]' in str(proj.name or ''):
+                        return True
+            except Exception:
+                pass
+            return False
+
+        def _apply_framing_fit_for_lives(project_id, value, strategy_id, video, burned, cache):
+            if _is_live_project(project_id, video):
+                strategy = jobs._project_strategy(project_id, strategy_id)
+                if strategy.aspect == 'portrait':
+                    plain = [
+                        {**scene, 'crop_x': None, 'crop_track': None, 'framing_source': None, 'framing_adjusted': False}
+                        for scene in value['scenes']
+                    ]
+                    return {**value, 'scenes': plain, 'layout': 'blur'}, 'full_frame'
+            return _orig_apply_framing(project_id, value, strategy_id, video, burned, cache)
+
+        jobs._apply_framing = _apply_framing_fit_for_lives
+    except Exception as exc:
+        print(f'[tikclip-web] Aviso ao configurar modo fit para lives: {exc}')
+
+
 def preparar_ambiente() -> int:
     os.environ['TIKCLIP_DATA_DIR'] = str(DATA_DIR)
     os.environ['TIKCLIP_APP_DIR'] = str(DATA_DIR)
@@ -393,6 +436,7 @@ def preparar_ambiente() -> int:
     _aprimorar_hashtags_projeto()
     _aprimorar_duracao_minima()
     _aprimorar_acesso_rede()
+    _aprimorar_fit_lives()
     porta_env = os.getenv('TIKCLIP_WEB_PORT')
     return int(porta_env) if porta_env else escolher_porta(8585)
 
