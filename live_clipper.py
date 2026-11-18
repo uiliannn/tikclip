@@ -186,6 +186,25 @@ def _pcm_rms_db(pcm_bytes: bytes) -> float:
     return round(max(-60.0, 20.0 * math.log10(rms)), 2)
 
 
+def _parse_hashtags(raw: Any) -> list[str]:
+    if not raw:
+        return []
+    if isinstance(raw, str):
+        parts = re.split(r'[\s,;]+', raw.strip())
+    elif isinstance(raw, (list, tuple)):
+        parts = [str(x).strip() for x in raw]
+    else:
+        return []
+    out: list[str] = []
+    seen: set[str] = set()
+    for p in parts:
+        tag = p.lstrip('#').strip()
+        if tag and tag.lower() not in seen:
+            seen.add(tag.lower())
+            out.append(tag)
+    return out
+
+
 class LiveSession:
     def __init__(
         self,
@@ -198,6 +217,7 @@ class LiveSession:
         server_port: int = 8585,
         tiktok_account: str | None = None,
         youtube_account: str | None = None,
+        hashtags: str | list[str] | None = None,
     ):
         self.id = session_id
         self.url = info['url']
@@ -213,6 +233,7 @@ class LiveSession:
         self.server_port = server_port
         self.tiktok_account = (tiktok_account or '').strip() or None
         self.youtube_account = (youtube_account or '').strip() or None
+        self.hashtags: list[str] = _parse_hashtags(hashtags)
 
         self.dir = _data_dir() / 'live_sessions' / session_id
         self.buf_dir = self.dir / 'buffer'
@@ -516,7 +537,23 @@ class LiveSession:
         pid = clip_info.get('project_id')
         fallback_path = self.clips_dir / str(clip_info['filename'])
         default_title = f"{self.uploader} - {self.title[:60]} #{clip_info.get('seq', 1)}"
-        default_tags = ['live', 'cortes', self.uploader.replace(' ', '').lower()[:20]]
+        base_tags = list(self.hashtags) if self.hashtags else ['live', 'cortes', self.uploader.replace(' ', '').lower()[:20]]
+
+        def _merge_tags_and_desc(title_txt: str, desc_txt: str | None, existing_tags: list[str] | None) -> tuple[str, list[str]]:
+            merged: list[str] = []
+            seen: set[str] = set()
+            for t in [*(self.hashtags or []), *(existing_tags or [])]:
+                clean = str(t).lstrip('#').strip()
+                if clean and clean.lower() not in seen:
+                    seen.add(clean.lower())
+                    merged.append(clean)
+            if not merged:
+                merged = base_tags
+            final_desc = (desc_txt or title_txt).strip()
+            missing_hash = [f'#{t}' for t in merged if f'#{t.lower()}' not in final_desc.lower()]
+            if missing_hash:
+                final_desc = f"{final_desc}\n\n{' '.join(missing_hash)}"
+            return final_desc, merged
 
         if pid:
             try:
@@ -531,13 +568,13 @@ class LiveSession:
                     vp = api_ext._video_path(pid, job)
                     if vp and Path(vp).is_file():
                         t = ready.get('title') or default_title
-                        desc = ready.get('description') or f"{t}\n\n#Shorts #cortes"
-                        tags = ready.get('hashtags') or default_tags
-                        return Path(vp), t, desc, list(tags)
+                        final_desc, merged_tags = _merge_tags_and_desc(t, ready.get('description'), ready.get('hashtags'))
+                        return Path(vp), t, final_desc, merged_tags
             except Exception:
                 pass
 
-        return fallback_path, default_title, f"{default_title}\n\n#Shorts #cortes", default_tags
+        final_desc, merged_tags = _merge_tags_and_desc(default_title, None, ['Shorts', *base_tags])
+        return fallback_path, default_title, final_desc, merged_tags
 
     def publish_clip_async(
         self,
@@ -637,6 +674,7 @@ class LiveSession:
                 'clips': list(self.clips)[:30],
                 'tiktok_account': self.tiktok_account,
                 'youtube_account': self.youtube_account,
+                'hashtags': list(self.hashtags),
             }
 
 
@@ -655,6 +693,7 @@ class LiveManager:
         server_port: int = 8585,
         tiktok_account: str | None = None,
         youtube_account: str | None = None,
+        hashtags: str | list[str] | None = None,
     ) -> dict[str, Any]:
         info = resolve_live_stream(url)
         sid = uuid.uuid4().hex[:10]
@@ -668,6 +707,7 @@ class LiveManager:
             server_port=server_port,
             tiktok_account=tiktok_account,
             youtube_account=youtube_account,
+            hashtags=hashtags,
         )
         with self._lock:
             self._sessions[sid] = sess
@@ -710,6 +750,14 @@ class LiveManager:
         if platform not in ('tiktok', 'youtube'):
             raise ValueError('Plataforma inválida (use tiktok ou youtube).')
         return sess.publish_clip_async(filename=filename, platform=platform, account_id=account_id, wait_pipeline=False)
+
+    def update_hashtags(self, sid: str, hashtags: str | list[str] | None) -> dict[str, Any]:
+        sess = self.get_session(sid)
+        if not sess:
+            raise KeyError('Sessão de live não encontrada.')
+        with sess.lock:
+            sess.hashtags = _parse_hashtags(hashtags)
+        return sess.to_dict()
 
 
 live_manager = LiveManager()

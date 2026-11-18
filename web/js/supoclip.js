@@ -5917,6 +5917,12 @@ async function renderLive(container) {
     ...ytAccounts.map((a) => h('option', { value: a.id, text: `▶️ ${a.name || a.id}${a.connected ? '' : ' (desconectada)'}` }))
   );
 
+  const inpHashtags = h('input', {
+    type: 'text',
+    class: 'sc-input',
+    placeholder: 'Ex: #gta6, #gameplayrj, #cortes, #viral',
+  });
+
   const btnStart = h('button', {
     class: 'sc-btn sc-btn-primary',
     style: 'background:#ef4444; border-color:#ef4444; font-weight:700;',
@@ -5935,6 +5941,7 @@ async function renderLive(container) {
             send_to_pipeline: chkPipeline.checked,
             tiktok_account: selTikTok.value || null,
             youtube_account: selYouTube.value || null,
+            hashtags: inpHashtags.value.trim(),
           }),
         });
         inpUrl.value = '';
@@ -5968,6 +5975,10 @@ async function renderLive(container) {
       h('div', null,
         h('label', { class: 'sc-label', text: 'Auto-post YouTube Shorts (Opcional)' }),
         selYouTube
+      ),
+      h('div', { style: 'grid-column: 1 / -1;' },
+        h('label', { class: 'sc-label', text: 'Hashtags desta Live (aplicadas ao publicar no TikTok e YouTube)' }),
+        inpHashtags
       ),
       h('label', { style: 'display:flex; align-items:center; gap:8px; cursor:pointer; font-size:13px; padding:8px 0; grid-column: 1 / -1;' },
         chkPipeline,
@@ -6158,7 +6169,28 @@ async function renderLive(container) {
                 h('span', { class: 'sc-pill-status', text: s.platform }),
                 h('strong', { style: 'font-size:15px;', text: s.title })
               ),
-              h('div', { style: 'font-size:12px; color:var(--text-muted); margin-top:4px;', text: `${s.uploader} • Modo: ${s.clip_mode} • Corte padrão: ${s.clip_duration}s` })
+              h('div', { style: 'font-size:12px; color:var(--text-muted); margin-top:4px;', text: `${s.uploader} • Modo: ${s.clip_mode} • Corte padrão: ${s.clip_duration}s` }),
+              h('div', { style: 'display:flex; align-items:center; gap:6px; flex-wrap:wrap; margin-top:6px;' },
+                h('span', { style: 'font-size:12px; color:var(--text-muted);' }, '🏷️ Hashtags:'),
+                (s.hashtags && s.hashtags.length)
+                  ? s.hashtags.map((t) => h('span', { class: 'sc-pill-status', style: 'font-size:11px;' }, `#${t}`))
+                  : h('span', { style: 'font-size:12px; color:var(--text-muted); opacity:0.7;', text: 'Nenhuma' }),
+                h('button', {
+                  class: 'sc-btn sc-btn-sm',
+                  style: 'font-size:11px; padding:2px 8px;',
+                  onclick: async () => {
+                    const atual = (s.hashtags || []).map((t) => `#${t}`).join(' ');
+                    const novo = window.prompt('Hashtags desta live (separadas por espaço ou vírgula):', atual);
+                    if (novo === null) return;
+                    await apiSupo(`/live/${s.id}/hashtags`, {
+                      method: 'POST',
+                      body: JSON.stringify({ hashtags: novo }),
+                    });
+                    toast('Hashtags da live atualizadas!');
+                    await _loadLiveSessions();
+                  },
+                }, '✏️ Editar')
+              )
             )
           ),
           s.error ? h('div', { style: 'margin-top:8px; color:#f87171; font-size:12px;', text: s.error }) : null,

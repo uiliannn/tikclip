@@ -1588,6 +1588,7 @@ def live_start_session(payload: dict[str, Any]) -> dict[str, Any]:
     send_to_pipeline = bool(payload.get('send_to_pipeline', True))
     tiktok_account = str(payload.get('tiktok_account') or '').strip() or None
     youtube_account = str(payload.get('youtube_account') or '').strip() or None
+    hashtags = payload.get('hashtags')
     server_port = int(os.environ.get('TIKCLIP_WEB_PORT') or 8585)
 
     try:
@@ -1600,6 +1601,7 @@ def live_start_session(payload: dict[str, Any]) -> dict[str, Any]:
             server_port=server_port,
             tiktok_account=tiktok_account,
             youtube_account=youtube_account,
+            hashtags=hashtags,
         )
     except live_clipper.LiveResolveError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
@@ -1667,3 +1669,13 @@ def live_publish_clip(session_id: str, filename: str, payload: dict[str, Any]) -
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     return {'ok': True, 'clip': clip}
+
+
+@router.post('/live/{session_id}/hashtags')
+def live_update_hashtags(session_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+    import live_clipper
+    try:
+        sess = live_clipper.live_manager.update_hashtags(session_id, payload.get('hashtags'))
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return {'ok': True, 'session': sess}
