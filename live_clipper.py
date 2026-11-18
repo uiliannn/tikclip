@@ -31,8 +31,9 @@ MIN_CLIP_SEC = 65        # Sempre > 60s para monetização no TikTok
 DEFAULT_CLIP_SEC = 85
 PEAK_COOLDOWN_SEC = 120  # Intervalo mínimo entre cortes automáticos por pico
 PEAK_POST_WAIT_SEC = 22  # Espera após o pico para capturar a reação completa
-PEAK_DELTA_DB = 7.5      # Salto mínimo acima da mediana recente para considerar pico
+PEAK_DELTA_DB = 6.5      # Salto padrão acima da mediana recente para considerar pico
 PEAK_MIN_DB = -26.0      # Nível mínimo absoluto (dBFS) para evitar disparo no silêncio
+PEAK_QUIET_MAX_SEC = 480 # Fallback: se ficar 8 min sem pico (ex: podcast comprimido), faz um corte
 SR = 16000               # Taxa de amostragem do pipe de áudio (16 kHz mono s16le)
 
 
@@ -402,21 +403,36 @@ class LiveSession:
 
             buf_sec = self.buffer_seconds()
             if self.clip_mode == 'peak' and buf_sec >= MIN_CLIP_SEC:
+                # Sensibilidade adaptativa: podcasts/lives com áudio comprimido alto têm picos menores
+                if self.baseline_db >= -23.0:
+                    delta_req = 4.2
+                elif self.baseline_db >= -26.0:
+                    delta_req = 5.5
+                else:
+                    delta_req = PEAK_DELTA_DB
+
                 # Detecta pico se ainda não há pico pendente e passou o cooldown
                 if (
                     self.pending_peak_timer is None
                     and (now - self.last_auto_clip_at) >= PEAK_COOLDOWN_SEC
                     and db >= PEAK_MIN_DB
-                    and (db - self.baseline_db) >= PEAK_DELTA_DB
+                    and (db - self.baseline_db) >= delta_req
                 ):
                     self.last_peak_at = now
                     self.pending_peak_timer = now + PEAK_POST_WAIT_SEC
-                    logger.info(f'[Live {self.id}] Pico detectado! {db} dB (base {self.baseline_db} dB)')
+                    logger.info(f'[Live {self.id}] Pico detectado! {db} dB (base {self.baseline_db} dB, delta>={delta_req})')
 
                 if self.pending_peak_timer is not None and now >= self.pending_peak_timer:
                     self.pending_peak_timer = None
                     self.last_auto_clip_at = now
                     trigger_reason = f'Pico de Áudio ({db:.1f} dB)'
+                elif (
+                    self.pending_peak_timer is None
+                    and (now - (self.last_auto_clip_at or self.started_at)) >= PEAK_QUIET_MAX_SEC
+                    and db >= -32.0
+                ):
+                    self.last_auto_clip_at = now
+                    trigger_reason = 'Fallback Periódico (8 min)'
 
             elif self.clip_mode == 'interval' and buf_sec >= MIN_CLIP_SEC:
                 ref = self.last_auto_clip_at or self.started_at
