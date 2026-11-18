@@ -99,28 +99,48 @@ def resolve_live_stream(url: str) -> dict[str, Any]:
         raise LiveResolveError('Informe uma URL de live válida.')
 
     platform = detect_platform(norm_url)
-    opts: dict[str, Any] = {
+    base_opts: dict[str, Any] = {
         'quiet': True,
         'no_warnings': True,
         'noplaylist': True,
         'format': 'b[height<=720]/bv*[height<=720]+ba/b',
     }
+    if shutil.which('node'):
+        base_opts['js_runtimes'] = {'node': {}}
 
-    cookies_file = _data_dir() / 'cookies-youtube.txt'
-    if platform == 'YouTube' and cookies_file.is_file():
-        opts['cookiefile'] = str(cookies_file)
+    attempts: list[dict[str, Any]] = []
+    if platform == 'YouTube':
+        attempts.append({**base_opts})
+        attempts.append({
+            **base_opts,
+            'extractor_args': {'youtube': {'player_client': ['android_vr', 'tv', 'web']}},
+        })
+        cookies_file = _data_dir() / 'cookies-youtube.txt'
+        if cookies_file.is_file():
+            attempts.append({**base_opts, 'cookiefile': str(cookies_file)})
+    else:
+        attempts.append(base_opts)
 
-    try:
-        with yt_dlp.YoutubeDL(opts) as ydl:
-            info = ydl.extract_info(norm_url, download=False)
-    except Exception as exc:
-        msg = str(exc)
-        low = msg.lower()
-        if 'premieres in' in low or 'live event will begin' in low:
-            raise LiveResolveError('Esta transmissão ainda está agendada e não começou.') from exc
-        if 'not live' in low or 'offline' in low:
-            raise LiveResolveError(f'Este canal ({platform}) não está ao vivo no momento.') from exc
-        raise LiveResolveError(f'Não foi possível abrir a live: {msg[-220:]}') from exc
+    info = None
+    last_exc: Exception | None = None
+    for opts in attempts:
+        try:
+            with yt_dlp.YoutubeDL(opts) as ydl:
+                info = ydl.extract_info(norm_url, download=False)
+            if info:
+                break
+        except Exception as exc:
+            last_exc = exc
+            low = str(exc).lower()
+            if 'premieres in' in low or 'live event will begin' in low:
+                raise LiveResolveError('Esta transmissão ainda está agendada e não começou.') from exc
+            if 'not live' in low or 'offline' in low:
+                raise LiveResolveError(f'Este canal ({platform}) não está ao vivo no momento.') from exc
+            continue
+
+    if not info:
+        msg = str(last_exc) if last_exc else 'Sem resposta do yt-dlp'
+        raise LiveResolveError(f'Não foi possível abrir a live: {msg[-220:]}')
 
     if not info or not info.get('is_live'):
         raise LiveResolveError(f'Este canal/vídeo ({platform}) não está ao vivo no momento.')
