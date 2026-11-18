@@ -6093,7 +6093,7 @@ async function renderLive(container) {
         clipsList.append(h('div', { style: 'font-size:12px; font-weight:700; color:var(--text-muted);' }, `Cortes capturados (${s.clips.length}):`));
         const fmtPubBadge = (label, st) => {
           if (!st) return null;
-          if (st === 'publicado') return h('span', { class: 'sc-pill-status', style: 'font-size:11px; background:rgba(16,185,129,0.18); color:#34d399;' }, `✅ ${label}`);
+          if (st === 'publicado' || st === 'completed') return h('span', { class: 'sc-pill-status', style: 'font-size:11px; background:rgba(16,185,129,0.18); color:#34d399;' }, `✅ ${label}`);
           if (st === 'aguardando_pipeline' || st === 'publicando') return h('span', { class: 'sc-pill-status', style: 'font-size:11px; background:rgba(245,158,11,0.18); color:#fbbf24;' }, `⏳ ${label}: ${st === 'aguardando_pipeline' ? 'aguardando IA' : 'enviando...'}`);
           return h('span', { class: 'sc-pill-status', style: 'font-size:11px; background:rgba(239,68,68,0.18); color:#f87171;' }, `❌ ${label}: ${st}`);
         };

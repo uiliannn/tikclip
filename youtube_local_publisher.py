@@ -78,7 +78,7 @@ def list_accounts() -> list[dict[str, Any]]:
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(json.dumps(accounts, indent=2, ensure_ascii=False), encoding="utf-8")
         except Exception:
-            logger.debug("excecao ignorada", exc_info=True)
+            pass
 
     return accounts
 
@@ -235,7 +235,7 @@ def _dismiss_popups(page) -> None:
                 el.click()
                 time.sleep(0.3)
         except Exception:
-            logger.debug("excecao ignorada", exc_info=True)
+            pass
 
 
 def login_session(
@@ -291,7 +291,7 @@ def login_session(
                                 time.sleep(2)
                                 return True
                         except Exception:
-                            logger.debug("excecao ignorada", exc_info=True)
+                            pass
 
                 # Se a janela foi fechada pelo usuário
                 if page.is_closed():
@@ -302,7 +302,7 @@ def login_session(
             try:
                 context.close()
             except Exception:
-                logger.debug("excecao ignorada", exc_info=True)
+                pass
             _clean_browser_blobs(p_dir)
 
 
@@ -316,7 +316,7 @@ def _clean_browser_blobs(profile_path: Path) -> None:
                 if entry.name.endswith(".indexeddb.blob"):
                     shutil.rmtree(entry, ignore_errors=True)
     except Exception:
-        logger.debug("excecao ignorada", exc_info=True)
+        pass
 
 
 def _get_ffmpeg_paths() -> tuple[str, str]:
@@ -385,12 +385,16 @@ def _convert_to_vertical_short(video_path: Path, progress: Callable[[str], None]
     flags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
     cmd = [
         ffmpeg, "-y", "-i", str(video_path),
-        "-lavfi", "[0:v]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,boxblur=20:5[bg];[0:v]scale=1080:1920:force_original_aspect_ratio=decrease[fg];[bg][fg]overlay=(W-w)/2:(H-h)/2",
-        "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
+        "-lavfi", "[0:v]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,boxblur=12:2[bg];[0:v]scale=1080:1920:force_original_aspect_ratio=decrease[fg];[bg][fg]overlay=(W-w)/2:(H-h)/2",
+        "-c:v", "libx264", "-preset", "ultrafast", "-crf", "23",
         "-c:a", "copy",
         str(out_path)
     ]
-    res = subprocess.run(cmd, capture_output=True, text=True, timeout=180, creationflags=flags)
+    try:
+        res = subprocess.run(cmd, capture_output=True, text=True, timeout=420, creationflags=flags)
+    except subprocess.TimeoutExpired:
+        logger.warning("Timeout (420s) ao converter vídeo para vertical; enviando original.")
+        return video_path
     if res.returncode != 0 or not out_path.is_file():
         logger.warning("Falha ao converter vídeo para vertical: %s", res.stderr)
         return video_path
@@ -437,7 +441,7 @@ def publish_video(
             try:
                 progress(msg)
             except Exception:
-                logger.debug("excecao ignorada", exc_info=True)
+                pass
         logger.info("[YouTube Publisher] %s", msg)
 
     # Se marcado como Shorts, verifica se o vídeo é horizontal.
@@ -581,7 +585,7 @@ def publish_video(
             try:
                 page.locator("ytcp-uploads-dialog").first.wait_for(state="attached", timeout=45000)
             except Exception:
-                logger.debug("excecao ignorada", exc_info=True)
+                pass
 
             # Aguarda diretamente o campo de título estar visível e interativo
             title_input = page.locator(
@@ -610,7 +614,7 @@ def publish_video(
             try:
                 title_input.fill(final_title)
             except Exception:
-                logger.debug("excecao ignorada", exc_info=True)
+                pass
             time.sleep(0.5)
 
             # 2. PREENCHIMENTO DA DESCRIÇÃO
@@ -636,7 +640,7 @@ def publish_video(
                         try:
                             desc_input.fill(final_description)
                         except Exception:
-                            logger.debug("excecao ignorada", exc_info=True)
+                            pass
                         time.sleep(0.5)
                 except Exception as exc:
                     _prog(f"Aviso ao preencher descrição: {exc}")
@@ -708,7 +712,7 @@ def publish_video(
                     if video_url:
                         video_id = video_url.rstrip("/").split("/")[-1]
             except Exception:
-                logger.debug("excecao ignorada", exc_info=True)
+                pass
 
             # 7. AVANÇAR ETAPAS ("Próximo" / "Avançar")
             _prog("Avançando para as etapas de elementos, verificações e visibilidade...")
@@ -764,7 +768,7 @@ def publish_video(
                         if video_url:
                             video_id = video_url.rstrip("/").split("/")[-1]
                 except Exception:
-                    logger.debug("excecao ignorada", exc_info=True)
+                    pass
 
             # 9. SALVAR / PUBLICAR
             _prog("Publicando o vídeo no YouTube Studio...")
@@ -835,7 +839,7 @@ def publish_video(
                             clicked_anyway = True
                             break
                     except Exception:
-                        logger.debug("excecao ignorada", exc_info=True)
+                        pass
                 if clicked_anyway:
                     break
 
@@ -847,7 +851,7 @@ def publish_video(
                     if close_test.is_visible(timeout=500):
                         break
                 except Exception:
-                    logger.debug("excecao ignorada", exc_info=True)
+                    pass
 
                 time.sleep(1)
 
@@ -868,11 +872,11 @@ def publish_video(
                                 if video_url:
                                     video_id = video_url.rstrip("/").split("/")[-1]
                         except Exception:
-                            logger.debug("excecao ignorada", exc_info=True)
+                            pass
                     close_btn.click()
                     time.sleep(1)
             except Exception:
-                logger.debug("excecao ignorada", exc_info=True)
+                pass
 
             final_link_msg = f" (Link: {video_url})" if video_url else ""
             _prog(f"Vídeo publicado com sucesso no YouTube Studio!{final_link_msg} [OK]")
@@ -891,10 +895,10 @@ def publish_video(
             try:
                 context.close()
             except Exception:
-                logger.debug("excecao ignorada", exc_info=True)
+                pass
             _clean_browser_blobs(p_dir)
             if temp_converted and temp_converted.is_file():
                 try:
                     temp_converted.unlink(missing_ok=True)
                 except Exception:
-                    logger.debug("excecao ignorada", exc_info=True)
+                    pass

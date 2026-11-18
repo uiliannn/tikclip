@@ -610,7 +610,7 @@ class LiveSession:
                 pid = clip_info.get('project_id')
                 if wait_pipeline and pid:
                     import api_ext
-                    deadline = time.time() + 900  # até 15 min aguardando pipeline 9:16
+                    deadline = time.time() + 1800  # até 30 min aguardando pipeline 9:16 na fila
                     while time.time() < deadline and not self.stop_event.is_set():
                         try:
                             p_clips = api_ext.project_clips(pid)
@@ -641,9 +641,9 @@ class LiveSession:
                         cover_path=cover,
                         account=account_id or 'default',
                     )
-                    st = (res or {}).get('status', 'publicado')
+                    st = str((res or {}).get('status') or 'publicado').lower()
                     with self.lock:
-                        clip_info[status_key] = 'publicado' if st in ('published', 'publicado', 'ok', 'success') else st
+                        clip_info[status_key] = 'publicado' if st in ('published', 'publicado', 'completed', 'done', 'uploaded', 'ok', 'success') else st
                 elif platform == 'youtube':
                     import youtube_local_publisher as ytl
                     ytl.publish_video(
