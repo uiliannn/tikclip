@@ -408,6 +408,48 @@ def _aprimorar_fit_lives() -> None:
         print(f'[tikclip-web] Aviso ao configurar modo fit para lives: {exc}')
 
 
+def _aprimorar_sem_legenda() -> None:
+    """Desativa legendas automaticamente quando o projeto tem [SEM_LEGENDA] ou subtitles=False."""
+    try:
+        from backend.services.studio import jobs, models
+        from backend.core.database import SessionLocal
+        from backend.models.project import Project
+
+        _orig_apply_strategy = jobs._apply_strategy
+        _orig_apply_framing = jobs._apply_framing
+
+        def _has_no_sub_flag(project_id: str) -> bool:
+            try:
+                with SessionLocal() as db:
+                    proj = db.query(Project).filter(Project.id == project_id).first()
+                    if proj and ('[SEM_LEGENDA]' in str(proj.name or '') or '[SEM_LEGENDA]' in str(proj.settings or '')):
+                        return True
+            except Exception:
+                pass
+            return False
+
+        def _apply_framing_no_sub(project_id, value, strategy_id, video, burned, cache):
+            out_val, framing = _orig_apply_framing(project_id, value, strategy_id, video, burned, cache)
+            if _has_no_sub_flag(project_id):
+                out_val = {**out_val, 'subtitles': False}
+            return out_val, framing
+
+        def _apply_strategy_no_sub_support(draft, strategy_id, *, burned_subtitles=False, layout=None):
+            res = _orig_apply_strategy(draft, strategy_id, burned_subtitles=burned_subtitles, layout=layout)
+            raw_title = str((draft or {}).get('title') or '')
+            raw_instr = str((draft or {}).get('instruction') or '')
+            if (draft or {}).get('subtitles') is False or '[SEM_LEGENDA]' in raw_title or '[SEM_LEGENDA]' in raw_instr:
+                data = res.model_dump()
+                data['subtitles'] = False
+                return models.Draft.model_validate(data)
+            return res
+
+        jobs._apply_framing = _apply_framing_no_sub
+        jobs._apply_strategy = _apply_strategy_no_sub_support
+    except Exception as exc:
+        print(f'[tikclip-web] Aviso ao configurar modo sem legenda: {exc}')
+
+
 def preparar_ambiente() -> int:
     os.environ['TIKCLIP_DATA_DIR'] = str(DATA_DIR)
     os.environ['TIKCLIP_APP_DIR'] = str(DATA_DIR)
@@ -437,6 +479,7 @@ def preparar_ambiente() -> int:
     _aprimorar_duracao_minima()
     _aprimorar_acesso_rede()
     _aprimorar_fit_lives()
+    _aprimorar_sem_legenda()
     porta_env = os.getenv('TIKCLIP_WEB_PORT')
     return int(porta_env) if porta_env else escolher_porta(8585)
 
